@@ -1,6 +1,6 @@
 # Project context
 
-Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.2.0. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
+Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.3.0. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
 
 Read README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md (alias to COMPONENT_SPEC), docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md and docs/CODEX_WORKFLOW.md before changing component behavior.
 
@@ -16,4 +16,4 @@ Standalone applications and scripts may optionally declare `desktop.createShortc
 
 Verification: run the temporary-path automated tests and build. Run the explicitly documented desktop acceptance helper only for harmless dummy components. Never use live Caelestia as a destructive test target. Do not mutate global Git settings. Ignore virtualenvs, logs, backups, staging, reference clone and build output.
 
-The GitHub suite separates `caelestia-dev-manager/` (manager, installer and docs) from `components/<id>/` (published component source). The Component Store fetches Git objects on startup in a background worker; it never checks out or executes catalogue code. Store downloads are separately reviewed source-only operations into the manager's local `plugins/`; installation remains the existing reviewed transaction. Protect local edits, pin downloads to a commit and retain previous source in XDG data source-backups. Never pull catalogue changes directly into installed runtimes. See docs/COMPONENT_STORE.md.
+The GitHub suite separates `caelestia-dev-manager/` (manager, installer and docs) from `components/<id>/` (published component source). The Component Store uses the built-in suite/main catalogue without repository fields. It fetches Git objects on startup in a background worker; it never checks out or executes catalogue code. One Install/Update/Open button downloads inert local source and proceeds into existing dependency and installation reviews. Summaries are readable with full source/exact plans available as technical details; there is no Code tab. Cancelling may retain downloaded development source but never changes installed files. Previous version selects a differing installed backup and preserves current source, store provenance and runtime configuration. Protect local edits, pin downloads to a commit and retain previous source in XDG data source-backups. Never pull catalogue changes directly into installed runtimes. See docs/COMPONENT_STORE.md.

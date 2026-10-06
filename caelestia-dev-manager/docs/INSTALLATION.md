@@ -21,9 +21,12 @@ never resets source or discards local changes. Private repositories require GitH
 access through Git's normal credential mechanism.
 
 After launching, Component Store scans published components asynchronously.
-Downloads create reviewed local source under the manager project's `plugins/`;
-the next Install / Update still requires its normal review. The store's startup
-check can be disabled. See [store documentation](COMPONENT_STORE.md).
+The built-in catalogue needs no repository setup. Its single Install / Update
+button downloads local source under the manager project's `plugins/` and proceeds
+to the dependency and installation reviews. Cancelling leaves installed files
+unchanged. Previous version restores an installed backup; restart the application
+after updates or restores. Settings can disable startup checks. See
+[store documentation](COMPONENT_STORE.md).
 
 | Data | Default location |
 | --- | --- |

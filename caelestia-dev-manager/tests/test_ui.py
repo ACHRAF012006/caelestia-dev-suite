@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt
 from app.main import Window
 from backend.codex.package import encode
 
-def test_paste_create_editor_copy_and_reopen(manager, app_files):
+def test_paste_create_external_source_change_copy_and_reopen(manager, app_files):
     app = QApplication.instance() or QApplication([])
     window = Window(manager); window.show(); app.processEvents()
     m, files = app_files
@@ -23,7 +23,9 @@ def test_paste_create_editor_copy_and_reopen(manager, app_files):
     window.confirm = lambda *args: True
     window.install_selected()
     assert manager.registry.get(m["id"])["installed"]
-    window.edit_selected(); window.code_editor.setPlainText('print("source edit")\n'); window.save_editor()
+    assert "Code" not in [window.nav.item(i).text() for i in range(window.nav.count())]
+    assert not hasattr(window, "code_editor")
+    manager.save_file(m["id"], "src/main.py", 'print("source edit")\n')
     assert manager.status(manager.registry.get(m["id"]))["source_modified"]
     window.request.setPlainText("Build a clipboard application"); window.copy_context()
     assert "Build a clipboard application" in app.clipboard().text()

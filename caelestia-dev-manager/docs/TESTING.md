@@ -7,7 +7,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 .venv/bin/python -m build
 ```
 
-The tests use pytest temporary XDG roots. They cover structured/multi-file/single-file package parsing, language detection, malicious paths/duplicates, manifest keys/types, static Python syntax, registry persistence, ownership collisions, exact app/plugin/service planning, uninstall isolation, enable/disable, source/installed differences, stale previews, manual and automatic backup restore, checksum tampering, service-unit verification using systemd-analyze, explicit crash recovery, compatibility detection, read-only environment detection, source deletion confirmation, inert install scripts, and the Qt import/editor/context-copy/reopen flow.
+The tests use pytest temporary XDG roots. They cover structured/multi-file/single-file package parsing, language detection, malicious paths/duplicates, manifest keys/types, static Python syntax, registry persistence, ownership collisions, exact app/plugin/service planning, uninstall isolation, enable/disable, source/installed differences, stale previews, manual and automatic backup restore, checksum tampering, service-unit verification using systemd-analyze, explicit crash recovery, compatibility detection, read-only environment detection, source deletion confirmation, inert install scripts, and the Qt import/external-source-change/context-copy/reopen flow.
 
 The systemd-analyze test only reads generated temporary unit files; it never starts a live service. The Qt test runs offscreen and uses the real UI and backend with temporary paths and mocked systemd.
 
@@ -15,16 +15,22 @@ Desktop shortcut tests use temporary XDG roots exclusively. They cover localized
 
 Dependency diagnostic regression tests in `tests/test_dependencies.py` mock venv/pip subprocesses and use temporary component environments. They cover per-component isolation, version checks without imports, missing system tools, transitive package failures, authenticated URL redaction, network/timeout classification, failure persistence, verified retries, stale readiness markers, symlink rejection and the Qt Dependencies/error views. These checks do not download packages or alter real component environments.
 
-## Desktop acceptance
-
 `tests/test_store.py` uses temporary repositories and XDG roots to exercise real
 bare Git discovery, immutable commits, caches and source updates. It verifies
 that discovery never executes source, rejects symlink/submodule Git objects and
 unsafe paths, constrains repository URLs/branches, protects local edits, refuses
 stale reviews, restores a failed source swap, preserves installed files, and
-retains source backups. Qt checks cover search, source review and asynchronous
-offline failure. Bootstrap checks reject missing Git and unowned directories.
+retains source backups. Qt checks cover one-button installation, update, Open,
+cancel/retry without repeated source backups, fixed catalogue settings, filters,
+navigation without a Code page, asynchronous offline failure and previous-version
+restore. Restore checks preserve user configuration, latest source and store
+provenance, detect same-version payload changes and skip same-payload backups.
+`tests/test_review.py` verifies readable summaries, optional exact technical
+details and disabled acceptance for invalid plans. Bootstrap checks reject
+missing Git and unowned directories.
 No GitHub download or production installation is required by these tests.
+
+## Desktop acceptance
 
 The explicit acceptance helper performs live **harmless unique dummy** app/service checks. It never installs or modifies a Caelestia plugin and never restarts the production shell.
 
@@ -58,6 +64,12 @@ The first prepares real binary-wheel Python dependencies in an isolated environm
 The shortcut helper uses native clipboard paste/import and installation dialogs with **temporary source, XDG and desktop directories only**. It closes the manager window, launches the generated executable desktop file through real KDE KIO, checks the independent application's output, reopens the manager to verify shortcut recognition, then uninstalls while preserving source and an unrelated desktop file. It does not add a shortcut to the real KDE desktop or alter Plasma folder settings. Rebuild the catalogue probe from the current source first; its `--file` mode validates launching a specific desktop entry outside the application catalogue.
 
 ## Results on this machine
+
+Manager 0.3.0: **160 automated tests passed**; wheel and source distribution
+built successfully. The simplified store was visually checked offscreen with
+the normal dark stylesheet and TouchDeck icon. The one-button update/restore
+workflow was exercised with harmless components under temporary XDG roots.
+No production manager installation or component was changed for this release.
 
 Verified 2026-10-06 on CachyOS, Plasma 6.7.5, Wayland, Caelestia installed commit `e34b6957fad5ce9395841b65be9e3df180ccd65c`:
 

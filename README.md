@@ -4,7 +4,7 @@ Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE P
 
 ## Repository layout
 
-- **`caelestia-dev-manager/`** — Dev Manager 0.2.0, installer, documentation and tests.
+- **`caelestia-dev-manager/`** — Dev Manager 0.3.0, installer, documentation and tests.
 - **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 is included.
 
 The manager handles installation and lifecycle. Components continue running after it closes.
@@ -32,7 +32,7 @@ Private repositories require access through Git credentials or an authenticated 
 
 ## Download and update components
 
-Dev Manager's **Component Store** checks this repository in the background when it opens. Search components and inspect source, permissions and dependencies. **Download source** saves a reviewed local development copy. **Install / Update Installed Version** then applies the normal reviewed dependency/install transaction. Local edits are protected, and previous downloaded source is preserved. Offline checks keep the last catalogue. You can disable startup checks or use **Check for Updates** manually.
+Dev Manager's **Component Store** checks this repository automatically when it opens, with no repository setup. Choose an app and press **Install**; the same button becomes **Update** when needed or **Open** for installed apps. Downloads continue directly into readable permission and installation reviews, with technical details available on demand. **Previous version** restores an earlier installed snapshot while keeping settings and current source. Local edits are protected and offline checks keep the last catalogue. Settings can disable startup checks; **Refresh** checks manually. There is no Code tab; use Components → Open Source for development edits.
 
 Launch installed TouchDeck from KDE or with `touchdeck`; it does not need Dev Manager running.
 

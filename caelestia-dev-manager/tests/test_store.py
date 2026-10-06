@@ -9,8 +9,9 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QEventLoop
+from PySide6.QtCore import QEventLoop, Qt
 from PySide6.QtWidgets import QApplication
+from PySide6.QtTest import QTest
 
 from app.main import Window
 from backend.paths import SafetyError
@@ -196,11 +197,13 @@ def test_store_ui_async_failure_cache_search_and_review(manager, app_files, monk
     page.search.setText("Harmless"); assert page.list.count() == 1
     reviews = []
     window.confirm = lambda *args: reviews.append(args) or False
-    page.download()
+    assert not hasattr(page, "repository") and not hasattr(page, "download_button")
+    page.install()
     assert "src/main.py" in reviews[0][1]
-    assert not manager.paths.source(m["id"]).exists()
+    assert manager.paths.source(m["id"]).exists()
+    assert not manager.registry.get(m["id"])["installed"]
     window.confirm = lambda *args: True
-    page.download()
+    page.install()
     assert manager.paths.source(m["id"]).exists() and page.install_button.isEnabled()
     monkeypatch.setattr(Store, "scan", lambda self: (_ for _ in ()).throw(SafetyError("Offline test")))
     page.check()
@@ -209,7 +212,7 @@ def test_store_ui_async_failure_cache_search_and_review(manager, app_files, monk
     while page.worker is not None and time.monotonic() < deadline:
         app.processEvents(QEventLoop.AllEvents); time.sleep(.01)
     assert page.worker is None
-    assert "Offline test" in page.status.text() and "cached" in page.status.text()
+    assert "Offline test" in page.last_error and "saved apps" in page.status.text()
     assert page.list.count() == 1
     window.close(); app.processEvents()
 
@@ -286,3 +289,96 @@ def test_async_success_uses_main_thread_registry_and_keeps_cache(manager, app_fi
     assert window.store_page.catalog == catalog and window.store_page.list.count() == 1
     assert window.store_page.worker is None
     window.close(); app.processEvents()
+
+
+def catalog_for(files, commit=COMMIT):
+    return {"repository": DEFAULT_REPOSITORY, "branch": "main", "commit": commit,
+            "checked_at": "test", "entries": [{"manifest": json.loads(files["manifest.json"]),
+            "files": files, "hash": source_hash(files)}], "issues": []}
+
+
+def test_one_store_button_installs_updates_and_restores_without_losing_source(manager, app_files, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    m, files = app_files
+    window = Window(manager); window.navigate("Component Store"); window.show()
+    page = window.store_page; page.checked(catalog_for(files)); app.processEvents()
+    window.confirm = lambda *args: True
+    assert page.install_button.text() == "Install" and page.previous_button.isHidden()
+    QTest.mouseClick(page.install_button, Qt.LeftButton)
+    assert manager.installed(m["id"])["installed_version"] == m["version"]
+    assert page.install_button.text() == "Open" and page.previous_button.isHidden()
+    launches = []; monkeypatch.setattr(window, "launch_selected", lambda: launches.append(window.current_id))
+    QTest.mouseClick(page.install_button, Qt.LeftButton)
+    assert launches == [m["id"]]
+
+    updated = {**files, "src/main.py": "print('version two')\n"}
+    newer = {**m, "version": "0.2.0"}; updated["manifest.json"] = json.dumps(newer)
+    page.checked(catalog_for(updated, "b" * 40))
+    assert page.install_button.text() == "Update"
+    window.confirm = lambda *args: False
+    QTest.mouseClick(page.install_button, Qt.LeftButton)
+    assert manager.installed(m["id"])["installed_version"] == m["version"]
+    assert manager.read_source(m["id"]) == updated
+    assert page.install_button.text() == "Update" and not page.busy and window.nav.isEnabled()
+    backups_before = list((manager.paths.manager / "source-backups").iterdir())
+    window.confirm = lambda *args: True
+    QTest.mouseClick(page.install_button, Qt.LeftButton)
+    assert list((manager.paths.manager / "source-backups").iterdir()) == backups_before
+    assert manager.installed(m["id"])["installed_version"] == "0.2.0"
+    assert page.install_button.text() == "Open" and not page.previous_button.isHidden()
+    manager.backup(m["id"])  # A manual snapshot of the same payload is not a previous version.
+    window.refresh()
+    assert manager.previous_version_backup(m["id"])["version"] == m["version"]
+    config = manager.paths.config / m["id"] / "settings.json"
+    config.parent.mkdir(parents=True); config.write_text('{"keep": true}')
+    window.confirm = lambda *args: False
+    QTest.mouseClick(page.previous_button, Qt.LeftButton)
+    assert manager.installed(m["id"])["installed_version"] == "0.2.0"
+    window.confirm = lambda *args: True
+    QTest.mouseClick(page.previous_button, Qt.LeftButton)
+    record = manager.installed(m["id"])
+    assert record["installed_version"] == m["version"]
+    assert record["installed_source_hash"] == source_hash(files)
+    assert config.read_text() == '{"keep": true}'
+    assert manager.read_source(m["id"]) == updated
+    assert record["store_origin"]["hash"] == source_hash(updated)
+    installed_main = next(Path(f["path"]) for f in manager.registry.files(m["id"]) if f["path"].endswith("src/main.py"))
+    assert installed_main.read_text() == files["src/main.py"]
+    assert page.install_button.text() == "Update"
+    future = {**updated, "src/main.py": "print('version three')\n"}
+    manager.plan_store_download(future, DEFAULT_REPOSITORY, "c" * 40)
+    window.close(); app.processEvents()
+
+
+def test_fixed_catalogue_settings_no_code_page_and_filters(manager, app_files):
+    app = QApplication.instance() or QApplication([])
+    store = Store(manager.paths)
+    store.save_settings("https://github.com/example/old-setting.git", "other", False)
+    window = Window(manager); page = window.store_page
+    assert page.store.settings == {"repository": DEFAULT_REPOSITORY, "branch": "main", "check_on_startup": False}
+    assert all(window.nav.item(i).text() != "Code" for i in range(window.nav.count()))
+    assert "Refresh" in page.status.text()
+    window.store_startup.setChecked(True)
+    assert Store(manager.paths).settings == {"repository": DEFAULT_REPOSITORY, "branch": "main", "check_on_startup": True}
+    _, files = app_files; page.checked(catalog_for(files))
+    page.filter.setCurrentText("Installed"); assert page.list.count() == 0
+    page.filter.setCurrentText("All apps"); window.confirm = lambda *args: True; page.install()
+    page.filter.setCurrentText("Installed"); assert page.list.count() == 1
+    page.filter.setCurrentText("Updates"); assert page.list.count() == 0
+    for name in ("Codex Context", "Backups", "Settings", "Component Store"):
+        window.navigate(name)
+        assert window.stack.currentIndex() == window.nav.currentRow()
+    window.close(); app.processEvents()
+
+
+def test_previous_version_detects_same_version_payload_updates(manager, app_files):
+    m, files = app_files
+    manager.create(files); manager.install(m["id"])
+    assert manager.previous_version_backup(m["id"]) is None
+    manager.backup(m["id"]); manager.set_enabled(m["id"], False); manager.set_enabled(m["id"], True)
+    assert manager.previous_version_backup(m["id"]) is None
+    manager.save_file(m["id"], "src/main.py", "print('same version, different payload')\n")
+    manager.install(m["id"])
+    previous = manager.previous_version_backup(m["id"])
+    assert previous["record"]["installed_source_hash"] == source_hash(files)
+    assert previous["version"] == m["version"]

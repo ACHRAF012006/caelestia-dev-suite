@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 import re
 import shlex
-import subprocess
 import sys
 
 from PySide6.QtCore import Qt, QTimer, QUrl
@@ -15,7 +14,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
 
 from app.editor import CodeEditor
 from app.store import StorePage
-from backend.paths import VERSION, Paths, SafetyError, inside, no_symlinks, relative, atomic_write
+from app.review import ReviewDialog
+from backend.paths import VERSION, Paths, SafetyError, no_symlinks, relative
 from backend.manager import Manager
 from backend.validators import TYPES, RUNTIMES, manifest_parse, validate
 from backend.codex import context
@@ -23,6 +23,7 @@ from backend.codex.package import parse, detect, encode
 from backend.templates import TEMPLATES, template
 from backend.desktop import SHORTCUT_TYPES, ShortcutConflict, desktop_directory, shortcut_filename
 from backend.dependencies import DependencyError
+from backend.store import Store
 
 STYLE = """
 QWidget { background: #171b23; color: #e0e5ef; font-size: 13px; }
@@ -70,16 +71,17 @@ class Window(QMainWindow):
     def __init__(self, manager):
         super().__init__()
         self.manager = manager
-        self.current_id = None; self.editor_file = None; self.editor_loading = False; self.editor_dirty = False
+        self.current_id = None
+        self.backup_metadata = []
         self.setWindowTitle("Caelestia Dev Manager")
         self.setWindowIcon(QIcon.fromTheme("applications-development"))
         self.resize(1240, 830)
         container = QWidget(); main = QHBoxLayout(container); main.setContentsMargins(0, 0, 0, 0)
         self.nav = QListWidget(); self.nav.setFixedWidth(202)
-        for name in ["Dashboard", "Components", "Create / Import", "Code", "Codex Context", "Backups", "Logs", "Settings", "Component Store"]: self.nav.addItem(name)
+        for name in ["Dashboard", "Components", "Create / Import", "Codex Context", "Backups", "Logs", "Settings", "Component Store"]: self.nav.addItem(name)
         self.stack = QStackedWidget(); main.addWidget(self.nav); main.addWidget(self.stack, 1)
         self.setCentralWidget(container)
-        self.make_dashboard(); self.make_components(); self.make_import(); self.make_code(); self.make_context()
+        self.make_dashboard(); self.make_components(); self.make_import(); self.make_context()
         self.make_backups(); self.make_logs(); self.make_settings()
         self.store_page = StorePage(self); self.stack.addWidget(self.store_page)
         self.nav.currentRowChanged.connect(self.change_page)
@@ -100,19 +102,7 @@ class Window(QMainWindow):
     def notify(self, message): self.statusBar().showMessage(message, 10000)
 
     def confirm(self, title, text, label="Continue", extra=None):
-        dialog = QDialog(self); dialog.setWindowTitle(title); dialog.resize(850, 580)
-        layout = QVBoxLayout(dialog)
-        caption = QLabel(title); caption.setObjectName("title"); layout.addWidget(caption)
-        if extra is not None: layout.addWidget(extra)
-        editor = CodeEditor(readonly=True); editor.setPlainText(text); layout.addWidget(editor)
-        controls = QDialogButtonBox(QDialogButtonBox.Cancel)
-        accept = controls.addButton(label, QDialogButtonBox.AcceptRole); accept.setObjectName("primary")
-        if extra is not None:
-            def preview(text, valid): editor.setPlainText(text); accept.setEnabled(valid)
-            extra.refresh_preview = preview
-            accept.setEnabled(extra.plan is not None)
-        controls.accepted.connect(dialog.accept); controls.rejected.connect(dialog.reject); layout.addWidget(controls)
-        return dialog.exec() == QDialog.Accepted
+        return ReviewDialog(self, title, text, label, extra).exec() == QDialog.Accepted
 
     def show_text(self, title, text):
         dialog = QDialog(self); dialog.setWindowTitle(title); dialog.resize(880, 650)
@@ -122,9 +112,16 @@ class Window(QMainWindow):
 
     def change_page(self, index):
         self.stack.setCurrentIndex(index)
-        if index in {0, 1, 5, 6, 7}: self.guard(self.refresh)
-        if index == 4: self.generate_context()
-        if index == 8: self.guard(self.store_page.fill)
+        if index in {0, 1, 4, 5, 6}: self.guard(self.refresh)
+        if index == 3: self.generate_context()
+        if index == 7: self.guard(self.store_page.fill)
+
+    def navigate(self, name):
+        for index in range(self.nav.count()):
+            if self.nav.item(index).text() == name:
+                self.nav.setCurrentRow(index)
+                return
+        raise SafetyError("Unknown page: " + name)
 
     def make_dashboard(self):
         p, layout = page("Developer control center", "Create safely. Install independently. Manage the complete component lifecycle.")
@@ -156,7 +153,7 @@ class Window(QMainWindow):
                       ("Enable", "enable", lambda: self.enable_selected(True)), ("Disable", "disable", lambda: self.enable_selected(False)),
                       ("Launch / Start", "launch", self.launch_selected), ("Stop", "stop", self.stop_selected),
                       ("Restart", "restart", self.restart_selected), ("Uninstall", "uninstall", self.uninstall_selected),
-                      ("Open Source", "open", self.open_source), ("Edit Code", "edit", self.edit_selected),
+                      ("Open Source", "open", self.open_source),
                       ("Installed Files", "files", self.view_files), ("Logs", "logs", self.component_logs),
                       ("Backup", "backup", self.backup_selected), ("Delete Source", "delete", self.delete_selected),
                       ("Create Desktop Shortcut", "shortcut", self.toggle_desktop_shortcut),
@@ -298,79 +295,6 @@ class Window(QMainWindow):
             self.paste.setPlainText(encode(files, m)); self.nav.setCurrentRow(2); self.analyze()
         self.guard(load)
 
-    def make_code(self):
-        p, layout = page("Code", "A small source editor. Editing development files does not change the installed version.")
-        self.code_component = QComboBox(); self.code_component.currentIndexChanged.connect(lambda _: self.guard(self.load_editor_files))
-        layout.addLayout(row(self.code_component, button("Open in External Editor", lambda: self.guard(self.external_editor))))
-        split = QSplitter(); self.code_files = QListWidget(); self.code_files.setMinimumWidth(220); self.code_files.currentItemChanged.connect(self.open_editor_file)
-        self.code_editor = CodeEditor("Select a source file"); self.code_editor.textChanged.connect(self.mark_dirty)
-        split.addWidget(self.code_files); split.addWidget(self.code_editor); split.setStretchFactor(1, 1); layout.addWidget(split)
-        self.editor_label = QLabel(); layout.addWidget(self.editor_label)
-        layout.addLayout(row(button("Save File", lambda: self.guard(self.save_editor), True), button("New File", lambda: self.guard(self.new_file)),
-                             button("Remove File", lambda: self.guard(self.remove_editor_file)), button("Reload Files", lambda: self.guard(self.load_editor_files))))
-        self.stack.addWidget(p)
-
-    def mark_dirty(self):
-        if not self.editor_loading and self.editor_file:
-            self.editor_dirty = True; self.editor_label.setText(self.editor_file + " • Unsaved changes")
-
-    def discard_editor(self):
-        if not self.editor_dirty: return True
-        answer = QMessageBox.question(self, "Unsaved source changes", "Save your source changes before continuing?", QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, QMessageBox.Save)
-        if answer == QMessageBox.Cancel: return False
-        if answer == QMessageBox.Save:
-            if self.guard(self.save_editor) is not True: return False
-        self.editor_dirty = False
-        return True
-
-    def load_editor_files(self):
-        if not self.discard_editor(): return
-        id = self.code_component.currentData()
-        self.code_files.blockSignals(True); self.code_files.clear(); self.code_files.blockSignals(False)
-        self.editor_loading = True; self.code_editor.clear(); self.editor_file = None; self.editor_dirty = False; self.editor_loading = False
-        if not id: return
-        files = self.manager.read_source(id)
-        self.code_files.addItems(sorted(files)); self.code_files.setCurrentRow(0)
-
-    def open_editor_file(self, item, previous=None):
-        if not item: return
-        if not self.discard_editor():
-            self.code_files.blockSignals(True); self.code_files.setCurrentItem(previous); self.code_files.blockSignals(False); return
-        def load():
-            self.editor_loading = True
-            self.editor_file = item.text(); self.editor_id = self.code_component.currentData()
-            path = inside(self.manager.paths.source(self.editor_id), self.manager.paths.source(self.editor_id) / relative(item.text()))
-            self.code_editor.setPlainText(path.read_text()); self.editor_dirty = False; self.editor_label.setText(str(path)); self.editor_loading = False
-        self.guard(load)
-
-    def save_editor(self):
-        if not self.editor_file: raise SafetyError("Select a source file")
-        self.manager.save_file(self.editor_id, self.editor_file, self.code_editor.toPlainText())
-        self.editor_dirty = False; self.editor_label.setText(self.editor_file + " • Saved development source")
-        self.notify("Source saved. Update Installed Version applies it separately.")
-        return True
-
-    def new_file(self):
-        id = self.code_component.currentData()
-        if not id: raise SafetyError("Select a component")
-        name, ok = QInputDialog.getText(self, "New source file", "Relative path (for example src/helper.py):")
-        if ok:
-            relative(name)
-            if name in self.manager.read_source(id): raise SafetyError("File already exists")
-            self.manager.save_file(id, name, ""); self.load_editor_files()
-
-    def remove_editor_file(self):
-        if not self.editor_file: raise SafetyError("Select a source file")
-        if self.confirm("Remove development file", self.editor_file + "\nInstalled files are unaffected.", "Remove File"):
-            self.manager.remove_file(self.code_component.currentData(), self.editor_file)
-            self.editor_dirty = False; self.load_editor_files()
-
-    def external_editor(self):
-        id = self.code_component.currentData() or self.current_id
-        if not id: raise SafetyError("Select a component")
-        command = shlex.split(self.editor_setting.text().strip() or "kate")
-        subprocess.Popen([*command, str(self.manager.paths.source(id))], start_new_session=True, close_fds=True)
-
     def make_context(self):
         p, layout = page("Codex Context", "Generate a complete prompt with the environment, component contract, project conventions, and your request.")
         self.request = QTextEdit(); self.request.setPlaceholderText("What do you want Codex to build?"); self.request.setMaximumHeight(150); layout.addWidget(self.request)
@@ -411,20 +335,14 @@ class Window(QMainWindow):
     def make_settings(self):
         p, layout = page("Settings", "Local paths, environment detection, reference updates, and recovery.")
         self.settings_editor = CodeEditor(readonly=True); layout.addWidget(self.settings_editor)
-        self.editor_setting = QLineEdit(os.environ.get("VISUAL") or os.environ.get("EDITOR") or "kate")
-        config = self.manager.paths.config / "caelestia-dev-manager/settings.json"
-        try: self.editor_setting.setText(json.loads(no_symlinks(config).read_text()).get("editor", "kate"))
-        except (OSError, ValueError): pass
-        layout.addLayout(row(QLabel("External editor:"), self.editor_setting, button("Save Settings", lambda: self.guard(self.save_settings))))
+        self.store_startup = QCheckBox("Check for component updates when Dev Manager opens")
+        self.store_startup.setChecked(Store(self.manager.paths).settings["check_on_startup"])
+        self.store_startup.toggled.connect(lambda checked: self.guard(lambda: self.store_page.set_startup_check(checked)))
+        layout.addWidget(self.store_startup)
         layout.addLayout(row(button("Refresh Detection", lambda: self.guard(self.refresh)), button("Reload Caelestia Shell", lambda: self.guard(self.reload_shell)),
                              button("Recover Interrupted Operation", lambda: self.guard(self.recover))))
         layout.addWidget(button("Reference Update Command", lambda: self.guard(self.update_reference)))
         self.stack.addWidget(p)
-
-    def save_settings(self):
-        if not shlex.split(self.editor_setting.text()): raise SafetyError("External editor is empty")
-        atomic_write(self.manager.paths.config / "caelestia-dev-manager/settings.json", json.dumps({"editor": self.editor_setting.text()}).encode())
-        self.notify("Settings saved")
 
     def update_reference(self):
         self.show_text("Update reference", "Run this from your terminal:\n\n" + shlex.join([str(self.manager.paths.project / "update-reference.sh")]) +
@@ -461,15 +379,9 @@ class Window(QMainWindow):
         if selected: self.select_id(selected)
         elif self.components.count(): self.components.setCurrentRow(0)
         else: self.select_component(None)
-        old_editor = self.code_component.currentData()
-        # Keep active editor text intact when dashboards/registries refresh.
-        self.code_component.blockSignals(True); self.code_component.clear()
-        for r in self.statuses:
-            if r["source_exists"]: self.code_component.addItem(r["manifest"]["name"], r["id"])
-        if old_editor: self.code_component.setCurrentIndex(self.code_component.findData(old_editor))
-        self.code_component.blockSignals(False)
         self.backup_list.clear()
-        for b in self.manager.backups.list():
+        self.backup_metadata = self.manager.backups.list()
+        for b in self.backup_metadata:
             item = QListWidgetItem(f"{b['component_id']}  •  {b['version'] or 'not installed'}  •  {b['reason']}\n{b['date']}"); item.setData(Qt.UserRole, b["backup_id"]); self.backup_list.addItem(item)
         self.logs_editor.setPlainText("\n".join(self.manager.registry.logs()) or "No events recorded")
         self.settings_editor.setPlainText(json.dumps({"project": str(self.manager.paths.project), "database": str(self.manager.paths.database),
@@ -514,7 +426,7 @@ class Window(QMainWindow):
             "missing_files": r["missing"], "modified_files": r["modified"], "validation": r["validation"], "dependencies": dependencies}, indent=2))
         caps = installer(self.manager.paths, r.get("installed_manifest", r["manifest"])).capabilities
         for key, b in self.actions.items():
-            if key in {"open", "edit", "delete", "validate"}: active = r["source_exists"]
+            if key in {"open", "delete", "validate"}: active = r["source_exists"]
             elif key == "dependencies": active = True
             elif key == "install": active = r["source_exists"] and "install" in caps
             elif key == "files": active = r.get("installed", False)
@@ -558,7 +470,7 @@ class Window(QMainWindow):
         m = manifest_parse(self.manager.read_source(self.current_id)["manifest.json"])
         deps = m.get("dependencies", {}).get("python", [])
         if deps and not self.manager.dependencies_prepared(m):
-            if not self.confirm("Prepare Python dependencies", "Create a component-specific virtual environment in the development workspace.\nDownload binary wheels from the configured pip index. No system packages will be installed.\n\nRequested dependencies:\n" + "\n".join(deps) + "\n\nThis may take several minutes. Review dependencies before proceeding.", "Prepare Dependencies"): return
+            if not self.confirm("Download required libraries", m["name"] + " needs these Python libraries:\n\n" + "\n".join(deps) + "\n\nThey will be downloaded into this component's private environment. No system packages will be changed. This may take a few minutes.", "Download Libraries"): return False
             self.notify("Preparing Python dependencies…"); QApplication.processEvents()
             self.manager.prepare_dependencies(self.current_id)
         options = QWidget(); controls = QVBoxLayout(options); options.plan = None; options.filename = None; options.alternate_filename = None
@@ -574,16 +486,26 @@ class Window(QMainWindow):
                 text = (f"{m['name']} {m['version']}\n\n" + plan["preview"] + "\n\nEXECUTABLE LAUNCHERS\n" + executables +
                     "\n\nREQUESTED PERMISSIONS\n" + json.dumps(m.get("permissions", [])) + "\n\nDEPENDENCIES\n" + json.dumps(m.get("dependencies", {})) +
                     "\n\n" + "\n".join(plan["warnings"]) + "\n\nNo system files will be modified. Existing owned files are backed up.\nReview component source before launching or enabling.")
+                options.summary_text = (m["name"] + " " + m["version"] + "\n\n" + m.get("description", "") +
+                    "\n\nInstall location\n" + str(self.manager.paths.root(m)) +
+                    "\n\nPermissions\n" + ("\n".join("• " + p for p in m.get("permissions", [])) or "No additional permissions declared.") +
+                    "\n\nExisting versions are backed up so you can go back. The app runs independently of Dev Manager.\nRestart an open app to use its updated version.")
+                if plan["warnings"]: options.summary_text += "\n\nPlease note\n" + "\n".join(plan["warnings"])
+                text += "\n\nCOMPLETE COMPONENT SOURCE\n" + encode(self.manager.read_source(self.current_id), m)
             except SafetyError as e:
                 options.plan = None; text = str(e); alternative.setVisible(isinstance(e, ShortcutConflict))
+                options.summary_text = text
                 if isinstance(e, ShortcutConflict): options.alternate_filename = e.alternate
             options.preview_text = text
             if hasattr(options, "refresh_preview"): options.refresh_preview(text, options.plan is not None)
         def choose_alternate(): options.filename = options.alternate_filename; rebuild()
         options.checkbox.toggled.connect(rebuild); rebuild()
-        if self.confirm("Review installation plan", options.preview_text, "Install", options):
+        updating = r.get("installed", False)
+        if self.confirm(("Update " if updating else "Install ") + m["name"], options.preview_text, "Update" if updating else "Install", options):
             if options.plan is None: raise SafetyError(options.preview_text)
             self.manager.install(self.current_id, expected=options.plan); self.refresh(); self.notify("Installed. Components run independently of Dev Manager.")
+            return True
+        return False
 
     def toggle_desktop_shortcut(self):
         id = self.current_id
@@ -632,10 +554,6 @@ class Window(QMainWindow):
 
     def open_source(self): QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.manager.paths.source(self.current_id))))
 
-    def edit_selected(self):
-        if not self.discard_editor(): return
-        self.code_component.setCurrentIndex(self.code_component.findData(self.current_id)); self.load_editor_files(); self.nav.setCurrentRow(3)
-
     def view_files(self): self.show_text("Owned installed files", json.dumps(self.manager.registry.files(self.current_id), indent=2))
     def component_logs(self): self.show_text("Component logs", self.manager.runtime.logs(self.manager.registry.get(self.current_id)))
 
@@ -649,10 +567,9 @@ class Window(QMainWindow):
         text += "Type " + self.current_id + " to confirm:"
         confirmation, ok = QInputDialog.getText(self, "Delete Source", text)
         if ok:
-            self.manager.delete_source(self.current_id, confirmation); self.editor_dirty = False; self.refresh()
+            self.manager.delete_source(self.current_id, confirmation); self.refresh()
 
     def closeEvent(self, event):
-        if not self.discard_editor(): event.ignore(); return
         if not self.store_page.shutdown():
             event.ignore()
             QTimer.singleShot(500, self.close)

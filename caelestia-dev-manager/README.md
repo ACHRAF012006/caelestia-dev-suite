@@ -2,7 +2,7 @@
 
 A local Qt 6 desktop control center for independently installed components on CachyOS, KDE Plasma 6 and Caelestia KDE. Command: `caelestia-dev-manager`.
 
-The manager creates, imports, edits, validates, installs, enables, disables, updates, backs up, restores and removes components. Applications run as their own applications; services run through `systemd --user`; Caelestia plugins load into the actual shell. Closing or uninstalling the manager does not remove components or close applications.
+The manager creates, imports, validates, installs, enables, disables, updates, backs up, restores and removes components. Applications run as their own applications; services run through `systemd --user`; Caelestia plugins load into the actual shell. Closing or uninstalling the manager does not remove components or close applications.
 
 ## Install and launch
 
@@ -22,14 +22,19 @@ published components are under `components/`.
 
 ## Component Store
 
-Open **Component Store** to search the configured GitHub repository, inspect
-permissions, dependencies and complete source files, then **Download source**.
-The manager checks for repository updates in the background when it opens;
-**Check for Updates** repeats the check, and the startup option can be disabled.
-The last catalogue remains available offline. Downloaded source is not executed
-or installed. Use **Install / Update Installed Version** to review and apply it.
-Local source edits are protected; previous downloaded source is retained before
-replacement. Private repositories use your existing Git credentials or GitHub CLI login; no token is
+Open **Component Store**, choose an app and press **Install**. The same button
+changes to **Update** when a newer snapshot is available, or **Open** for an
+installed application. No repository setup is needed: the store uses the suite's
+built-in GitHub catalogue. Search and the All apps / Installed / Updates filter
+help you find apps. Installation reviews show a readable summary and optional
+technical details, including exact paths and complete source.
+
+The manager checks for updates in the background when it opens. **Refresh**
+repeats the check; Settings can disable startup checks. The last catalogue remains
+available offline. **Previous version** restores a differing saved installation
+after review, preserving your settings and current development source. Restart
+the app after updating or restoring. Local source edits are protected. Private
+repositories use existing Git credentials or GitHub CLI login; no token is
 stored in manager settings. See [component store details](docs/COMPONENT_STORE.md).
 
 ## Workflow
@@ -37,7 +42,7 @@ stored in manager settings. See [component store details](docs/COMPONENT_STORE.m
 1. Choose **New Component**, or open **Create / Import** and paste generated code.
 2. **Analyze Code / Preview Files** parses the package without executing it. Inspect the Files, Manifest, Destination and Validation tabs.
 3. **Create Component** writes development source under `plugins/<id>/`. **Save as Draft** permits incomplete static validation, but still requires safe paths and valid metadata.
-4. Review/edit in **Code** or your external editor. **Install** shows exact destinations, generated launchers, services, dependencies and permissions before writing installed files.
+4. Use **Open Source** in Components to edit development files with your preferred editor. **Install** reviews permissions before writing installed files; **Show technical details** includes exact destinations, generated launchers, services, dependencies and complete source. There is no Code tab.
 5. Launch the application from KDE. Enable services explicitly. Caelestia plugins install undiscoverable initially; enable them and explicitly reload the shell through Settings.
 6. Editing source changes nothing live. **Update Installed Version** applies the source snapshot after review and backup.
 7. **Disable**, **Uninstall** and **Delete Source** have separate meanings. Source deletion requires typing the component ID; uninstall keeps source.

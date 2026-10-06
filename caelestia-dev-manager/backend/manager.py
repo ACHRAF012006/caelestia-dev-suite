@@ -643,10 +643,24 @@ class Manager:
         remove = [f for f in self.registry.files(id) if f["path"] not in {str(x.path) for x in entries}]
         return meta, record, entries, remove
 
+    def previous_version_backup(self, id, backups=None):
+        record = self.registry.get(id)
+        if not record or not record.get("installed"): return None
+        for meta in self.backups.list() if backups is None else backups:
+            saved = meta["record"]
+            if meta["component_id"] != id or not saved.get("installed"): continue
+            if (saved.get("installed_source_hash") != record.get("installed_source_hash")
+                    or saved.get("installed_version") != record.get("installed_version")):
+                return meta
+        return None
+
     @locked
     def restore(self, backup_id):
         meta, record, entries, remove = self.plan_restore(backup_id)
         new = {**meta["record"], "manifest": record["manifest"], "source": record["source"], "restored_at": now()}
+        # Source is not restored with the installed payload; keep its current provenance.
+        if "store_origin" in record: new["store_origin"] = record["store_origin"]
+        else: new.pop("store_origin", None)
         if new["installed_manifest"]["type"] == "user-service": self.runtime.systemctl("stop", self.runtime.unit(record["id"]))
         self.transact(record, entries, remove, new, "Restored backup " + backup_id)
         if new["installed_manifest"]["type"] == "user-service": self.runtime.systemctl("daemon-reload")

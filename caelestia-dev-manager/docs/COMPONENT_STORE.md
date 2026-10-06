@@ -13,19 +13,35 @@ the published catalogue. Developer folders beginning with `_` are skipped.
 
 ## Browsing and applying updates
 
-Open Component Store and set the HTTPS GitHub repository URL and branch if
-necessary. The default is `https://github.com/ACHRAF012006/caelestia-dev-suite.git`
-on `main`. Startup checks are on by default, asynchronous and cancellable. The
-checkbox disables them; Check for Updates requests a manual refresh.
+Open Component Store, select an app and press Install. The catalogue uses
+`https://github.com/ACHRAF012006/caelestia-dev-suite.git` on `main` automatically;
+there are no repository or branch fields. Legacy custom repository settings are
+ignored by the UI. Startup checks are on by default, asynchronous and cancellable.
+Settings disables them; Refresh requests a manual check.
 
-The store shows each component's published version, source status, permissions,
-dependency requirements, static validation and source files. Search filters by
-name, ID, description and type. Every download preview identifies the immutable
-commit, exact source destination, added/removed/changed files and full source.
-Download Source imports a development snapshot only. Install / Update Installed
-Version then uses the existing dependency review, destination preview, ownership,
-backup and installation transaction. Enable/start remain explicit where required.
-Scanning the repository never updates running applications automatically.
+App cards show an icon, description and installation status. Search filters by
+name, ID, description and type; All apps, Installed and Updates filter the list.
+One main button changes from Install to Update when the published fingerprint
+differs, or Open when an installed app can launch. Non-launchable/disabled
+components use Components for enablement and runtime actions.
+
+Install/Update downloads an inert, commit-pinned development snapshot and
+continues into the existing dependency preparation and installation reviews.
+The readable review shows permissions and an optional desktop shortcut;
+Show technical details includes exact destination paths, generated launchers,
+dependencies and complete component source. More details on an app offers its
+permissions, requirements, repository commit and source for advanced inspection.
+There is no separate Download Source button or Code tab. Cancelling a review
+leaves installed files unchanged; downloaded development source may remain for
+retry. Scanning never updates running applications automatically.
+
+After an update, Previous version restores the newest saved installation with a
+different payload or version. Same-payload enablement, shortcut and manual
+backups are skipped. Review and confirm Restore Version. Your current installation
+is backed up first, and your configuration and latest development source are kept.
+Close and reopen the app afterward; services need an explicit Start. Further
+snapshot selection and reversing a restore are available in Backups. Before the
+first update, Previous version is hidden because no earlier payload exists.
 
 An existing local component can be linked to the store when its complete source
 matches the published component. Different local source is preserved. After a

@@ -61,7 +61,7 @@ def ui_stage(args):
         assert manager.installed(args.id)["installed"]
         click("Launch / Start"); QTest.qWait(1000)
         assert manager.runtime.processes(manager.installed(args.id))
-        window.nav.setCurrentRow(4); window.request.setPlainText("Build an independent test utility")
+        window.navigate("Codex Context"); window.request.setPlainText("Build an independent test utility")
         click("Copy Full Codex Prompt")
         assert "CAELESTIA_DEV_PACKAGE" in app.clipboard().text() and "independent test utility" in app.clipboard().text()
         window.nav.setCurrentRow(0); window.grab().save(str(args.output / "dashboard.png"))
