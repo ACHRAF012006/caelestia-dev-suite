@@ -9,6 +9,12 @@ Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE P
 
 The manager handles installation and lifecycle. Components continue running after it closes.
 
+## Install Caelestia on KDE
+
+Start with **KDE Plasma 6 on Wayland**. On a new CachyOS installation, choose KDE Plasma in the installer. Then follow our [Caelestia KDE setup guide](caelestia-dev-manager/docs/CAELESTIA_KDE_SETUP.md), based on [ladybug-me/caelestia-kde](https://github.com/ladybug-me/caelestia-kde).
+
+The guide covers requirements, downloading and reviewing the upstream installer, its installation menu, Nexus settings, updates, uninstalling and troubleshooting. The upstream desktop installer installs system dependencies and may request administrator authentication. Once the desktop is ready, install Dev Manager below.
+
 ## Install Dev Manager
 
 With Git installed and repository access configured:

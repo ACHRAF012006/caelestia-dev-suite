@@ -1,5 +1,7 @@
 # Installation
 
+For the desktop itself, see [Install Caelestia on KDE Plasma](CAELESTIA_KDE_SETUP.md). That guide follows the upstream desktop installer; the steps below install Dev Manager.
+
 Requires Python 3.11+, venv/pip, Qt/PySide6 available as binary wheels, and a working KDE/Wayland session for desktop use. Arch/CachyOS detection is informational; missing system packages are reported for manual installation. `systemctl --user` is required for service control. `qml6` is needed for standalone QML templates. `desktop-file-validate` and `kbuildsycoca6` are used when available. Qt/PySide6 is installed inside the manager's own user virtualenv; system Python is unchanged.
 
 From the repository:

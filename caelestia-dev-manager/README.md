@@ -6,6 +6,8 @@ The manager creates, imports, validates, installs, enables, disables, updates, b
 
 ## Install and launch
 
+Need the Caelestia desktop first? Follow [Install Caelestia on KDE Plasma](docs/CAELESTIA_KDE_SETUP.md), based on the upstream ladybug-me/caelestia-kde repository, then return here to install Dev Manager.
+
 ```bash
 ./install.sh
 caelestia-dev-manager
