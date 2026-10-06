@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.egg-info/
+build/
+dist/
+reference/caelestia-kde/
+workspace/*
+backups/*
+*.log
+.env
+*.pem
+*.key
+secrets/
+!.gitkeep

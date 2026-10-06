@@ -1,0 +1,43 @@
+# Caelestia Dev Suite
+
+Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE Plasma / Wayland.
+
+## Repository layout
+
+- **`caelestia-dev-manager/`** — Dev Manager 0.2.0, installer, documentation and tests.
+- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 is included.
+
+The manager handles installation and lifecycle. Components continue running after it closes.
+
+## Install Dev Manager
+
+With Git installed and repository access configured:
+
+```bash
+git clone https://github.com/ACHRAF012006/caelestia-dev-suite.git
+cd caelestia-dev-suite/caelestia-dev-manager
+./install.sh
+~/.local/bin/caelestia-dev-manager
+```
+
+Alternatively download [install-from-github.py](caelestia-dev-manager/install-from-github.py), inspect it, then run:
+
+```bash
+python3 install-from-github.py
+```
+
+This standalone bootstrap checks Git and Python, clones the suite into user XDG data and invokes the user-level installer. Git must be installed manually if missing. `--clone-only` downloads source without installing it; `--directory /path/to/checkout` chooses the source location. Repeated runs require the expected origin, clean source and a fast-forward update. No root access, global Python changes or system package installation.
+
+Private repositories require access through Git credentials or an authenticated GitHub CLI. The helper uses GitHub CLI credentials per command without changing global Git settings. No credentials are stored in manager settings.
+
+## Download and update components
+
+Dev Manager's **Component Store** checks this repository in the background when it opens. Search components and inspect source, permissions and dependencies. **Download source** saves a reviewed local development copy. **Install / Update Installed Version** then applies the normal reviewed dependency/install transaction. Local edits are protected, and previous downloaded source is preserved. Offline checks keep the last catalogue. You can disable startup checks or use **Check for Updates** manually.
+
+Launch installed TouchDeck from KDE or with `touchdeck`; it does not need Dev Manager running.
+
+## Development
+
+Edit manager code in `caelestia-dev-manager/`. Publish components in `components/<id>/` with semantic versions and strict manifests. Commit and push to `main`; the next store check discovers changes. Local downloaded/draft source under the manager's `plugins/` is ignored and never published automatically.
+
+[Manager documentation](caelestia-dev-manager/README.md) · [Component contract](caelestia-dev-manager/docs/COMPONENT_SPEC.md) · [Component Store](caelestia-dev-manager/docs/COMPONENT_STORE.md) · [TouchDeck](components/touchdeck/README.md)

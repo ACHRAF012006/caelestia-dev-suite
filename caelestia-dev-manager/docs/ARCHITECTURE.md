@@ -1,0 +1,54 @@
+# Architecture
+
+## Boundaries
+
+Qt Widgets (`app/main.py`) presents Dashboard, Components, Create / Import, Code, Codex Context, Backups, Logs, Settings and Component Store. It calls `backend.manager.Manager`; component source never becomes a manager page or is imported into the manager interpreter.
+
+The registry is `$XDG_STATE_HOME/caelestia-dev-manager/registry.sqlite3` with component records, a uniquely indexed absolute-path ownership table, and lifecycle events. Records preserve source and installed manifests separately, installed version, source fingerprint, destination, enabled state, timestamps, last operation ID, reload requirement, source deletion history, optional approved desktop-shortcut descriptor and installed shortcut preference. Runtime status also reports shortcut existence, missing/changed files, source availability, service state and best-effort PIDs.
+
+Source snapshots are UTF-8 file maps under `<development-repository>/plugins/<id>/`. Installed snapshots are at fixed user destinations. Fingerprints include content and filenames, so added, removed or changed source yields Update Available even if the version number was not changed.
+
+## Adapters and capabilities
+
+`backend/installers/` contains BaseInstaller, StandaloneAppInstaller, ScriptInstaller, UserServiceInstaller, CaelestiaPluginInstaller and reserved KDEIntegrationInstaller. These produce sealed FilePlans: target, content or staged source, checksum and mode. Adapter capabilities tell the UI which operations apply. The coordinator implements install/update, uninstall, enable/disable, backup/restore and status; Runtime implements launch/stop/restart/logs. A component cannot supply an arbitrary destination or installation command.
+
+| Type | Installed runtime | Activation |
+| --- | --- | --- |
+| standalone-app | XDG data `caelestia-dev-manager/apps/<id>/`; user command and `.desktop` | launcher executable; desktop visible |
+| script | Same app payload root; user command | launcher executable |
+| user-service | Same payload root; `cdm-<id>.service` in XDG config `systemd/user/` | explicit `systemctl --user enable --now` |
+| caelestia-plugin | XDG config `caelestia/plugins/<id>/` | discovery metadata plus explicit shell reload |
+| qml-component | Only verified Caelestia plugin target | same as Caelestia plugin |
+| kde-integration | Reserved | installation rejected |
+
+Generated app launchers invoke an absolute runtime interpreter, installed entrypoint, and manifest args after changing to the installed directory. They contain no manager imports. Popen uses a detached session and closed descriptors. Desktop launcher execution works with the manager entirely absent. PID matching checks the interpreter executable and entrypoint argument prefix, so unrelated programs merely mentioning installed files are excluded. Python dependencies are copied from a prepared component virtual environment into the installed `_venv`; the generated launcher uses that installed interpreter with bytecode writes disabled. Binaries and library files of the environment are owned just like source files. Sources cannot supply `_venv` files.
+
+`backend/desktop.py` reads the XDG desktop configuration without shell evaluation and validates shortcut basenames/descriptors. Manager exposes `plan_create_desktop_shortcut`, `create_desktop_shortcut`, `plan_remove_desktop_shortcut`, `remove_desktop_shortcut` and `has_desktop_shortcut`. Only standalone apps and scripts support these operations. A single canonical `.desktop` entry supplies both launcher locations. Toggle transactions retain existing ownership receipts and never rewrite the payload. Enable/disable and source updates regenerate both launcher copies consistently. Exact recorded shortcut paths remain authorized for removal/restore even if the user's XDG desktop location changes; no broad desktop directory ownership is granted.
+
+## Dependency diagnostics
+
+`backend/dependencies.py` reads `.dist-info/METADATA` as inert text and compares declared requirements using the manager's `packaging` dependency. It never imports a component or launches its interpreter during inspection, and checks source-preparation and installed environments independently. The Components view provides an offline Dependencies report and identifies missing system executables, absent Python distributions, version mismatches and incomplete preparation. A successful receipt alone does not make missing or mismatched distribution metadata ready.
+
+Reviewed preparation captures subprocess stdout/stderr for environment creation and binary-wheel pip resolution. Failure raises a structured `DependencyError`, preserves a bounded, URL-redacted `dependency-error.json` beside the private prepared environment and logs the diagnostic against the component. Network/index failures are distinguished from wheel availability; unknown failures do not guess a package. No install plan follows failed preparation. Retry reuses checked private staging files without recursive deletion, verifies declared distribution metadata and clears the failure only after success. The manifest schema and installed ownership rules are unchanged.
+
+## File operations
+
+`backend/store.py` reads a configured HTTPS GitHub repository's `components/<id>/` tree at an immutable fetched commit. A bare cache under XDG data avoids checkouts, executable filters and component hooks. Symlink/submodule modes, unsafe paths, binary payloads, reserved dependency directories, mismatching manifests and oversized catalogues are rejected. `app/store.py` runs cancellable Git checks on a worker thread; SQLite and UI changes stay in the main thread. The startup scan can be disabled and is skipped in sandbox mode. Failed checks keep the last validated catalogue.
+
+Store source download plans seal the previous source hash and registry record. Existing local IDs can be linked only if their file contents match the repository. Subsequent store updates refuse modified local source. A reviewed download stages inert files, retains the entire previous source directory in XDG data `source-backups/<uuid>/<id>/`, then swaps the source directory and records repository/commit/hash provenance. Errors restore the previous directory; a process crash during the source swap can require restoring the retained source directory manually. These source backups are distinct from installed-payload backups. No download prepares dependencies, modifies ownership receipts or installs code; the normal install transaction is still required.
+
+All source paths are relative, all IDs constrained, and all destination paths are canonical children of known per-type roots. Symlink traversal is refused. Previews display exact planned destination paths and executable modes. A source/dependency fingerprint is checked again when applying a preview. Unowned existing files and cross-component ownership collisions fail closed. Modification of an installed file blocks replacement/deletion until reviewed and resolved. Extra files within a payload directory are not owned and are left alone.
+
+Operations take an advisory cross-process flock. Installed-file operations first snapshot all touched files and write a durable intent journal, then atomically replace individual files and commit the new SQLite record/receipt. A journal is removed only after commit. Errors roll files back; after a crash Settings offers recovery. Operation IDs distinguish a completed SQLite commit from an interrupted file phase. This is recoverable coordination, not a single atomic transaction across SQLite, files and systemd. A process crash can require explicit recovery. Systemd enablement/start state is external; inspect it after errors/restores. Updates stop services before replacing their source; starting again is explicit.
+
+Partial shortcut operations also back up the complete previous installed ownership snapshot, so restoring a toggle backup preserves the rest of the app. Backup metadata separately records newly approved shortcut paths needed to roll back creation, without marking that shortcut as present in the prior component record.
+
+Backups are immutable snapshot directories under XDG data `caelestia-dev-manager/backups/<uuid>/` with version, manager version, date, original paths, file modes/checksums and prior record. Restoring checks every blob, refuses unowned collisions, creates a new pre-restore backup and adjusts receipts. Source files remain separate. Empty payload directories are removed only with `rmdir`; recursive installation-directory deletion is never used.
+
+## Caelestia
+
+The installed loader contract is inspected before planning plugin installs. A new plugin is installed with owned `metadata.json.disabled`, so it does not execute during install. Enabling restores `metadata.json`; disabling hides discovery metadata. Existing objects continue until the user explicitly reloads `caelestia-shell.service`. Pending reloads are displayed; loaded/healthy QML state cannot be queried per component through the inspected IPC. Nexus can also disable plugins with its own Qt Settings; manager discovery enablement does not override that separate state. Shell logs determine actual plugin load success.
+
+## Extending the platform
+
+Add manifest fields with strict validation, a target-specific adapter, supported capabilities and isolated safety tests. Document the verified host discovery/activation contract before supporting a new runtime. General KWin or Plasma widgets should use official KDE mechanisms in their own adapter. Dashboard tabs require an upstream hook or reviewed host changes; this platform currently does neither.

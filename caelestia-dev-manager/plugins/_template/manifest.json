@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "example-component",
+  "name": "Example Component",
+  "version": "0.1.0",
+  "description": "Development starter; copy into its own component directory",
+  "type": "script",
+  "runtime": "python",
+  "entrypoint": "src/main.py"
+}

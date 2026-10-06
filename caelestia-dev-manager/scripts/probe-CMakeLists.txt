@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(CDMCatalogueProbe LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(KF6Service REQUIRED)
+find_package(KF6KIO REQUIRED)
+add_executable(cdm-catalogue-probe catalogue-probe.cpp)
+target_link_libraries(cdm-catalogue-probe PRIVATE Qt6::Core KF6::Service KF6::KIOGui)

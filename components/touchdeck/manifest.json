@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "touchdeck",
+  "name": "TouchDeck",
+  "version": "0.1.1",
+  "description": "Independent touchscreen dashboard, PipeWire mixer and MPRIS remote for KDE",
+  "type": "standalone-app",
+  "runtime": "python-pyside6",
+  "entrypoint": "src/main.py",
+  "args": [],
+  "dependencies": {
+    "system": ["python3", "gio"],
+    "python": ["PySide6>=6.8", "pulsectl>=24.4.0", "dbus-next>=0.2.3", "psutil>=5.9"]
+  },
+  "desktop": {"terminal": false, "categories": "Utility;AudioVideo;", "icon": "assets/icon.svg", "createShortcut": false},
+  "permissions": [
+    "Read installed XDG desktop application entries and launch applications selected by the user",
+    "Read and control user audio devices and application streams through the local PulseAudio-compatible server",
+    "Read and control MPRIS players on the session D-Bus; read local album artwork",
+    "Request confirmed session and power actions through login1 on the system D-Bus",
+    "Read user-accessible CPU, memory, disk, network and temperature statistics; optionally invoke nvidia-smi and nmcli for status",
+    "Store configuration and backups in XDG_CONFIG_HOME/touchdeck and logs in XDG_STATE_HOME/touchdeck",
+    "Optionally create or remove only TouchDeck's marked user autostart entry under XDG_CONFIG_HOME/autostart",
+    "Execute visible user-configured argument lists after confirmation; open user-configured URLs and files"
+  ]
+}

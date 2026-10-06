@@ -1,0 +1,81 @@
+# Caelestia Dev Manager
+
+A local Qt 6 desktop control center for independently installed components on CachyOS, KDE Plasma 6 and Caelestia KDE. Command: `caelestia-dev-manager`.
+
+The manager creates, imports, edits, validates, installs, enables, disables, updates, backs up, restores and removes components. Applications run as their own applications; services run through `systemd --user`; Caelestia plugins load into the actual shell. Closing or uninstalling the manager does not remove components or close applications.
+
+## Install and launch
+
+```bash
+./install.sh
+caelestia-dev-manager
+```
+
+Installation creates a dedicated manager virtual environment, launcher and KDE desktop entry under user XDG directories. It downloads PySide6 and build dependencies into that environment; it never runs sudo or installs system packages. Existing component state and source remain during manager updates. Run `./install.sh` again to update the manager. `./uninstall.sh` removes only manager-owned files. See [installation details](docs/INSTALLATION.md).
+
+For a new computer, `install-from-github.py` checks for Git, clones the suite into
+user XDG data and invokes the manager installer. Run it with Python 3.11+; missing
+Git is reported for manual installation. `--clone-only` downloads source without
+running the installer. Repeated runs refuse local changes and use a fast-forward
+update. In the suite repository the manager is under `caelestia-dev-manager/` and
+published components are under `components/`.
+
+## Component Store
+
+Open **Component Store** to search the configured GitHub repository, inspect
+permissions, dependencies and complete source files, then **Download source**.
+The manager checks for repository updates in the background when it opens;
+**Check for Updates** repeats the check, and the startup option can be disabled.
+The last catalogue remains available offline. Downloaded source is not executed
+or installed. Use **Install / Update Installed Version** to review and apply it.
+Local source edits are protected; previous downloaded source is retained before
+replacement. Private repositories use your existing Git credentials or GitHub CLI login; no token is
+stored in manager settings. See [component store details](docs/COMPONENT_STORE.md).
+
+## Workflow
+
+1. Choose **New Component**, or open **Create / Import** and paste generated code.
+2. **Analyze Code / Preview Files** parses the package without executing it. Inspect the Files, Manifest, Destination and Validation tabs.
+3. **Create Component** writes development source under `plugins/<id>/`. **Save as Draft** permits incomplete static validation, but still requires safe paths and valid metadata.
+4. Review/edit in **Code** or your external editor. **Install** shows exact destinations, generated launchers, services, dependencies and permissions before writing installed files.
+5. Launch the application from KDE. Enable services explicitly. Caelestia plugins install undiscoverable initially; enable them and explicitly reload the shell through Settings.
+6. Editing source changes nothing live. **Update Installed Version** applies the source snapshot after review and backup.
+7. **Disable**, **Uninstall** and **Delete Source** have separate meanings. Source deletion requires typing the component ID; uninstall keeps source.
+
+Select a component and open **Dependencies** to check its declared system executables and Python package versions. Development preparation and the installed runtime are shown separately; packages installed in the manager or global Python do not satisfy a component's isolated environment. The component details show missing tools, unprepared packages and version mismatches without downloads or executing component code. **Install / Update** offers reviewed preparation or retry.
+
+Preparation failures show the component, the requirement reported by pip (including transitive packages), the Python version and captured output. Network/index failures are distinguished from unavailable binary wheels and dependency conflicts. A redacted diagnostic is retained for that component's current dependency set and in Logs; authenticated URLs are removed. Failed preparation never marks the environment ready or proceeds with installation. Only binary wheels are accepted; no source builds or global package installation are enabled.
+
+**Codex Context** assembles the environment, inventory, architecture, component spec, package format and current request into one clipboard prompt. Components are never added as runtime pages inside this manager.
+
+Standalone apps and scripts offer **Create shortcut on desktop** in New Component, Create / Import and the installation preview. It defaults to off; packages can opt in with `"desktop": {"createShortcut": true}`. Installed component actions can create/remove the shortcut separately. Shortcuts copy the normal application launcher into your configured XDG desktop directory, including localized paths. Existing unrelated files are preserved; the UI offers an alternate filename. Owned shortcuts are backed up and removed with component uninstall. See [desktop shortcuts](docs/DESKTOP_SHORTCUTS.md).
+
+## Verified Caelestia integration
+
+The inspected upstream and installed shell use `metadata.json` discovery at `$XDG_CONFIG_HOME/caelestia/plugins/<id>/`, loading a `quickshell` plugin's `main.qml` or explicit `ui`. The exposed plugin IPC supports count only. The manager does not invent an external activation API. It changes only its owned discovery file (`metadata.json` / `metadata.json.disabled`) and offers an explicit shell-service restart. See [environment findings](docs/ENVIRONMENT_FINDINGS.md) for inspected paths, source links and commit.
+
+Dashboard tabs in the inspected source are a fixed list. Dashboard injection and general KDE/KWin extensions are not supported by this release. A future adapter needs a verified runtime contract.
+
+## Development and tests
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e . pytest build
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
+.venv/bin/python -m build
+.venv/bin/python -m app.main
+# Completely separate test workspace and mocked systemd:
+.venv/bin/python -m app.main --sandbox /tmp/cdm-sandbox
+```
+
+The automated suite uses temporary paths. The separate desktop acceptance helper installs only uniquely named harmless test components, checks KDE's application catalogue, closes/reopens the manager, and cleans up. See [testing](docs/TESTING.md) for explicit commands and results.
+
+## Project layout
+
+`app/` contains the Qt desktop UI; `backend/` separates environment, registry, installers, validators, runtime, backups and Codex tooling; `plugins/` holds development projects; `reference/caelestia-kde/` is the upstream inspection clone; `workspace/` is ignored staging; `docs/` describes the contracts; `tests/` verifies safety and lifecycle behavior. Runtime database and backups live in XDG state/data, rather than the source repository.
+
+## Current limits
+
+Version 0.1 handles UTF-8 text packages, including SVG assets. Raster/binary package assets, archive import, compiled application build pipelines, KWin/Plasma package adapters and arbitrary QML module destinations are not implemented. Python/QML/shell applications, commands, Python/shell services and verified Caelestia Quickshell plugins are supported. Static validation checks Python syntax and metadata; it cannot prove code safety or guarantee QML imports compile. Python dependency preparation runs as a separately reviewed synchronous operation and can temporarily block the UI. App PID detection is best effort through `/proc`; applications that replace themselves or fork away from installed paths may not be detected.
+
+Start future work with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md). No real Notes app or user extension is included.
