@@ -56,10 +56,12 @@ def test_real_git_scan_cache_and_update_do_not_execute_source(manager, repositor
     marker = repository.parent / "must-not-exist"
     source = repository / "components/harmless-test/src/main.py"
     source.write_text(f"from pathlib import Path\nPath({str(marker)!r}).write_text('executed')\n")
+    (repository / "components/README.md").write_text("# Published components\n")
     git(repository, "add", "."); git(repository, "commit", "-m", "Inert source")
     store = local_store(manager, repository)
     first = store.scan()
     assert len(first["entries"]) == 1
+    assert first["issues"] == []
     entry = first["entries"][0]
     assert entry["hash"] == source_hash(entry["files"])
     assert not marker.exists() and not manager.paths.source("harmless-test").exists()

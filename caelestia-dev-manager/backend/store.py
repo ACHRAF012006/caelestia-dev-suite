@@ -162,6 +162,8 @@ class Store:
             mode, kind, object_id, size = info.split()
             try:
                 name = raw_path.decode("utf-8")
+                if len(name.split("/")) == 2 and kind == b"blob" and mode in (b"100644", b"100755"):
+                    continue  # Catalogue documentation is not a component directory.
                 prefix, ident, child = name.split("/", 2)
                 if ident.startswith("_"): continue  # Developer templates are not store products.
                 component_id(ident)
