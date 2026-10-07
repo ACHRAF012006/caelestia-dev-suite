@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "cast-audio",
+  "name": "Cast Audio",
+  "version": "0.1.0",
+  "description": "Cast a PipeWire output monitor to a local Google Cast receiver.",
+  "type": "caelestia-plugin",
+  "runtime": "quickshell",
+  "entrypoint": "main.qml",
+  "dependencies": {"system": ["quickshell", "python3", "pactl", "ffmpeg", "catt"], "python": []},
+  "compatibility": {"caelestia_commit": "e34b6957fad5ce9395841b65be9e3df180ccd65c"},
+  "permissions": [
+    "Capture the selected output monitor, including all applications playing through that output, after Start or explicit reconnect opt-in.",
+    "Discover Google Cast receivers using local-network mDNS through the separately installed catt command.",
+    "Control the selected receiver and serve unencrypted live audio on the route-selected private IPv4 interface while casting.",
+    "Keep preferences and a private catt configuration under XDG_CONFIG_HOME/cast-audio and runtime locking under the component's XDG runtime/cache directory.",
+    "Start and stop only the component's own helper, catt and FFmpeg processes; preserve local playback and default devices."
+  ]
+}

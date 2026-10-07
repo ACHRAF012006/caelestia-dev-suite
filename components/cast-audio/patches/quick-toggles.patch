@@ -1,0 +1,49 @@
+--- a/shell/modules/utilities/cards/Toggles.qml
++++ b/shell/modules/utilities/cards/Toggles.qml
+@@ -20,6 +20,15 @@
+     required property DrawerVisibilities visibilities
+     required property BarPopouts.Wrapper popouts
+ 
++    // Optional cast-audio 0.1.0 bridge. This is an explicit host modification,
++    // not an existing public plugin-registration API.
++    readonly property var castAudioPlugin: {
++        const loaded = PluginLoader.loadedCount;
++        return loaded > 0 ? (PluginLoader.pluginInstances["cast-audio"] || null) : null;
++    }
++    readonly property bool castAudioVisible: !(Config.utilities.quickToggles || [])
++        .some(t => t.id === "castAudio" && t.enabled === false)
++
+     readonly property var quickToggles: {
+         const configToggles = Config.utilities.quickToggles || [];
+         const disabledIds = new Set(configToggles.filter(t => t.enabled === false).map(t => t.id));
+@@ -46,6 +55,7 @@
+         const seenIds = new Set();
+ 
+         return allToggles.filter(item => {
++            if (item.id === "castAudio") return false;
+             if (seenIds.has(item.id))
+                 return false;
+             seenIds.add(item.id);
+@@ -103,6 +113,12 @@
+         QuickToggleRow {
+             visible: root.needExtraRow
+             model: root.needExtraRow ? root.quickToggles.slice(root.splitIndex) : []
++        }
++
++        Loader {
++            Layout.fillWidth: true
++            active: root.castAudioVisible && root.castAudioPlugin !== null
++            sourceComponent: active ? root.castAudioPlugin.quickToggle : null
+         }
+     }
+ 
+--- a/shell/modules/nexus/pages/utilities/QuickTogglesPage.qml
++++ b/shell/modules/nexus/pages/utilities/QuickTogglesPage.qml
+@@ -11,6 +11,7 @@
+ 
+     readonly property var connectivityToggles: [
+         { id: "wifi", label: qsTr("Wi-Fi") },
++        { id: "castAudio", label: qsTr("Cast Audio") },
+         { id: "bluetooth", label: qsTr("Bluetooth") },
+         { id: "vpn", label: qsTr("VPN") },
+     ]

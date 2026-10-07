@@ -5,7 +5,7 @@ Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE P
 ## Repository layout
 
 - **`caelestia-dev-manager/`** — Dev Manager 0.3.2, installer, documentation and tests.
-- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 is included.
+- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 and Cast Audio 0.1.0 are included.
 
 The manager handles installation and lifecycle. Components continue running after it closes.
 
@@ -44,8 +44,10 @@ Dev Manager's **Component Store** checks this repository automatically when it o
 
 Launch installed TouchDeck from KDE or with `touchdeck`; it does not need Dev Manager running.
 
+For [Cast Audio](components/cast-audio/README.md), choose Component Store → Refresh → Cast Audio → Install, enable it in Components, then explicitly restart `caelestia-shell.service`. Open its controls with `quickshell -c caelestia ipc call castAudio open`; click a discovered receiver to cast your output audio. The component README includes dependency setup and network requirements. It opens its own window; Quick Toggles placement requires the separately reviewed optional host patch.
+
 ## Development
 
 Edit manager code in `caelestia-dev-manager/`. Publish components in `components/<id>/` with semantic versions and strict manifests. Commit and push to `main`; the next store check discovers changes. Local downloaded/draft source under the manager's `plugins/` is ignored and never published automatically.
 
-[Manager documentation](caelestia-dev-manager/README.md) · [Component contract](caelestia-dev-manager/docs/COMPONENT_SPEC.md) · [Component Store](caelestia-dev-manager/docs/COMPONENT_STORE.md) · [TouchDeck](components/touchdeck/README.md)
+[Manager documentation](caelestia-dev-manager/README.md) · [Component contract](caelestia-dev-manager/docs/COMPONENT_SPEC.md) · [Component Store](caelestia-dev-manager/docs/COMPONENT_STORE.md) · [TouchDeck](components/touchdeck/README.md) · [Cast Audio](components/cast-audio/README.md)
