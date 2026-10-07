@@ -23,7 +23,7 @@ def local_ip(value):
         raise Failure("Receiver has an invalid address") from None
     networks = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")
     if ip.version != 4 or not any(ip in ipaddress.ip_network(n) for n in networks):
-        raise Failure("Only private/link-local IPv4 receivers are supported in 0.1.0")
+        raise Failure("Use a private or link-local IPv4 receiver address")
     if str(ip).endswith(".255"):
         raise Failure("Broadcast-like receiver address rejected")
     return str(ip)
@@ -50,7 +50,7 @@ def private_dir(path):
 
 class Preferences:
     defaults = {"source": "default", "bitrate": 192, "remember": True,
-                "reconnect": False, "last": "", "discovery_timeout": 45}
+                "reconnect": False, "last": "", "discovery_timeout": 45, "manual_devices": [], "stream_port": 0}
 
     def __init__(self):
         home = Path.home()
@@ -87,6 +87,24 @@ class Preferences:
         for key in ("source", "last"):
             if not isinstance(result[key], str) or len(result[key]) > 255 or any(not c.isprintable() for c in result[key]):
                 raise Failure("Invalid preference")
+        if type(result["stream_port"]) is not int or result["stream_port"] != 0 and not 1024 <= result["stream_port"] <= 65535:
+            raise Failure("Stream port must be 0 (automatic) or 1024–65535")
+        devices = result["manual_devices"]
+        if not isinstance(devices, list) or len(devices) > 16:
+            raise Failure("Save at most 16 manual receivers")
+        checked, seen = [], set()
+        for device in devices:
+            if not isinstance(device, dict) or set(device) != {"host", "name"}:
+                raise Failure("Manual receivers need a name and IPv4 address")
+            host = local_ip(device["host"])
+            name = device["name"]
+            if not isinstance(name, str) or not name.strip() or len(name) > 80 or any(not c.isprintable() for c in name):
+                raise Failure("Receiver name must contain 1–80 printable characters")
+            if host in seen:
+                raise Failure("Manual receiver IP addresses must be unique")
+            seen.add(host)
+            checked.append({"host": host, "name": name.strip()})
+        result["manual_devices"] = checked
         if not result["remember"]:
             result["last"] = ""
             result["reconnect"] = False

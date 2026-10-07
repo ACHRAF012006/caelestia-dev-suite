@@ -38,7 +38,7 @@ The optional icon must actually exist. Omit it to use the desktop development ic
 | service.restart | no, on-failure, always; defaults to no |
 | compatibility.plasma | Optional installed Plasma version prefix |
 | compatibility.caelestia_commit | Optional exact installed commit |
-| integration.target | qml-component currently requires caelestia-plugin |
+| integration.target | qml-component requires caelestia-plugin; Cast Audio quickshell plugins may declare caelestia-quick-toggles for the manager-owned adapter |
 | permissions | Descriptive string list shown during review; this is disclosure, not a security sandbox |
 
 Python/PySide6, standalone QML (`qml6`) and shell runtimes work for apps/commands/services. Caelestia integration requires quickshell. `python-pyside6` must declare a PySide6 Python dependency. `none` creates drafts. General KDE integration is reserved and cannot install in v0.1. Python dependencies require a Python runtime.
@@ -70,3 +70,5 @@ The manager manifest and Caelestia's `metadata.json` are different formats. A Ca
 ID, name, description and version must match the manager manifest. `ui` must match its entrypoint (defaults to main.qml). The actual runtime loader uses `Qt.createComponent` and `createObject` under the shell PluginLoader. A plugin may provide Quickshell windows or objects using real shell imports. There is no assumed dashboard-tab API. Optional host author/icon/settings metadata is passed through as source; unsafe code remains the user's responsibility to review.
 
 Source supports UTF-8 text files and SVG; package import rejects traversal, absolute paths, hidden/cache paths, duplicates, file/directory conflicts and symlinks. `_venv` is manager-reserved. All source files are copied as inert text data; only generated launchers or service entries invoke the declared entrypoint. Executable bits on source scripts are unnecessary: the launcher calls the interpreter explicitly. Install scripts are never auto-executed. Destination overrides and arbitrary service/desktop Exec fields are not supported.
+
+The Cast Audio-only `caelestia-quick-toggles` adapter requires manager 0.4 or newer. Its reviewed install adds a separate expandable row, enables new installs and restarts the shell. See [Quick Toggles integration](QUICK_TOGGLES_INTEGRATION.md). Other plugins keep the explicit enable/reload workflow.

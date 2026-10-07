@@ -1,0 +1,1 @@
+Pinned Caelestia KDE host fixtures from ladybug-me/caelestia-kde commit e34b6957fad5ce9395841b65be9e3df180ccd65c, shell/ paths. These upstream files remain GPL-3.0-only; see https://github.com/ladybug-me/caelestia-kde/blob/e34b6957fad5ce9395841b65be9e3df180ccd65c/LICENSE. Tests copy them exclusively to temporary XDG roots.

@@ -3,7 +3,7 @@ import asyncio
 import time
 
 import audio
-from cast import Cast, route
+from cast import Cast, route, merge_devices
 from safety import Failure, text
 from stream import Stream
 
@@ -12,7 +12,7 @@ class Controller:
     def __init__(self, preferences, processes, emit):
         self.prefs, self.processes, self.emit = preferences, processes, emit
         self.cast = Cast(processes)
-        self.devices, self.sources = [], []
+        self.devices, self.sources = merge_devices([], preferences.values["manual_devices"]), []
         self.receiver = self.stream = self.source = None
         self.operation = self.discovery = self.monitor = None
         self.state, self.message = "Off", preferences.notice or "Not connected"
@@ -24,11 +24,14 @@ class Controller:
         self.auto_pending = preferences.values["reconnect"]
 
     def publish(self):
-        self.emit({"state": self.state, "message": self.message, "scanning": self.scanning,
+        self.emit(self.snapshot())
+
+    def snapshot(self):
+        return {"state": self.state, "message": self.message, "scanning": self.scanning,
                    "devices": self.devices, "sources": self.sources,
                    "receiver": self.receiver["name"] if self.receiver else "",
                    "source_name": self.source["name"] if self.source else "",
-                   "volume": self.volume, "muted": self.muted, "settings": self.prefs.values})
+                   "volume": self.volume, "muted": self.muted, "settings": self.prefs.values}
 
     def status(self, state, message):
         self.state, self.message = state, message
@@ -45,7 +48,7 @@ class Controller:
         self.publish()
         try:
             self.sources = await audio.sources(self.processes)
-            self.devices = await self.cast.scan(self.prefs.values["discovery_timeout"])
+            self.devices = merge_devices(await self.cast.scan(self.prefs.values["discovery_timeout"]), self.prefs.values["manual_devices"])
             if self.state in ("Off", "Error"):
                 self.state = "Off"
                 self.message = "Choose a receiver" if self.devices else "No Cast devices found; check mDNS, firewall and Wi-Fi isolation"
@@ -57,9 +60,11 @@ class Controller:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self.devices = []
+            self.devices = merge_devices([], self.prefs.values["manual_devices"])
             if self.state in ("Off", "Error"):
                 self.state, self.message = "Error", self.error(exc)
+                if self.devices:
+                    self.message += "; saved IP receivers are still available"
         finally:
             self.scanning = False
             self.publish()
@@ -97,7 +102,7 @@ class Controller:
                 # Check before capturing; Cast.start checks again before loading.
                 if self.cast.busy(await self.cast.info(receiver)):
                     raise Failure("Receiver already busy; stop its current session before casting")
-                self.stream = Stream(self.processes, route(receiver["host"]), receiver["host"])
+                self.stream = Stream(self.processes, route(receiver["host"]), receiver["host"], self.prefs.values["stream_port"])
                 await self.stream.start(self.source["monitor"], self.prefs.values["bitrate"])
                 self.status("Connecting…", "Waiting for receiver playback; buffering adds several seconds…")
                 await self.cast.start(receiver, self.stream.url)
@@ -217,17 +222,21 @@ class Controller:
             self.visible = message.get("value") is True
             if self.visible:
                 self.refresh()
-        elif action == "settings" and self.state in ("Off", "Error"):
+        elif action == "settings":
             changes = message.get("values")
             try:
-                if not isinstance(changes, dict) or set(changes) - {"source", "bitrate", "remember", "reconnect", "discovery_timeout"}:
+                if self.state not in ("Off", "Error"):
+                    raise Failure("Stop casting before changing settings")
+                if not isinstance(changes, dict) or set(changes) - {"source", "bitrate", "remember", "reconnect", "discovery_timeout", "manual_devices", "stream_port"}:
                     raise Failure("Invalid settings")
                 self.prefs.save(changes)
+                self.devices = merge_devices([device for device in self.devices if not device.get("manual")], self.prefs.values["manual_devices"])
                 self.auto_pending = False
                 self.message = "Settings saved"
                 self.publish()
             except Exception as exc:
-                self.status("Error", self.error(exc))
+                self.message = self.error(exc)
+                self.publish()
 
     async def close(self):
         self.closing = True

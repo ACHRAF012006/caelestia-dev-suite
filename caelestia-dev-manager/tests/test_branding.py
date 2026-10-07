@@ -33,6 +33,7 @@ def test_bundled_icon_keeps_colors_when_system_palette_changes():
 def test_manager_logo_is_installed_owned_updated_and_removed(tmp_path, monkeypatch):
     project = tmp_path / "source with spaces"
     (project / "app/assets").mkdir(parents=True)
+    (project / "pyproject.toml").write_text('[project]\nversion = "0.4.0"\n')
     source = project / "app/assets/icon.svg"
     source.write_bytes(ICON_PATH.read_bytes())
     home, data, config = (tmp_path / name for name in ("home", "data with spaces", "config"))
@@ -54,6 +55,7 @@ def test_manager_logo_is_installed_owned_updated_and_removed(tmp_path, monkeypat
     icon = data / "caelestia-dev-manager/manager/icon.svg"
     desktop = data / "applications/caelestia-dev-manager.desktop"
     receipt = config / "caelestia-dev-manager/manager-install.json"
+    assert json.loads(receipt.read_text())["version"] == "0.4.0"
     assert icon.read_bytes() == source.read_bytes()
     assert f"Icon={icon}\n" in desktop.read_text()
     assert "Icon=applications-development" not in desktop.read_text()

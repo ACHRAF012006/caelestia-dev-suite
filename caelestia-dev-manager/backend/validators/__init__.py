@@ -58,6 +58,8 @@ def manifest_parse(text):
     if m.get("service", {}).get("restart", "no") not in {"no", "on-failure", "always"}: raise SafetyError("Invalid service restart policy")
     if not isinstance(m.get("permissions", []), list) or any(not isinstance(x, str) for x in m.get("permissions", [])): raise SafetyError("permissions must be descriptive strings")
     if any(not isinstance(v, str) for v in m.get("compatibility", {}).values()): raise SafetyError("Compatibility values must be strings")
+    if m.get("integration", {}).get("target") == "caelestia-quick-toggles" and (m["id"] != "cast-audio" or m["type"] != "caelestia-plugin" or m["runtime"] != "quickshell"):
+        raise SafetyError("The verified Quick Toggles menu adapter currently supports the Cast Audio Quickshell plugin only")
     return m
 
 def validate(files, manifest, environment=None):
@@ -90,7 +92,7 @@ def validate(files, manifest, environment=None):
                 if meta.get(key) != manifest.get(key, ""): errors.append(f"metadata.json {key} must match manifest")
         except (ValueError, AttributeError): errors.append("Invalid Caelestia metadata.json")
         if environment and not environment.get("plugin_supported"): errors.append("Installed Caelestia plugin architecture could not be verified")
-        warnings.append("Plugin installation/activation requires an explicit Caelestia shell restart. No dashboard registration API is assumed.")
+        warnings.append("Installation enables Cast Audio, integrates its menu into Quick Toggles and restarts the Caelestia KDE shell after review." if manifest.get("integration", {}).get("target") == "caelestia-quick-toggles" else "Plugin installation/activation requires an explicit Caelestia shell restart. No dashboard registration API is assumed.")
     elif manifest["runtime"] not in {"python", "python-pyside6", "shell", "qml"}:
         errors.append("This component type needs a Python, shell, or standalone QML runtime")
     for name in manifest.get("dependencies", {}).get("system", []):

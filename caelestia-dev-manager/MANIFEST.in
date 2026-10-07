@@ -3,4 +3,6 @@ recursive-include docs *.md
 recursive-include scripts *.py *.cpp *.txt
 recursive-include plugins/_template *.json *.md *.py
 recursive-include tests *.py
+recursive-include tests/fixtures *.qml *.md
+recursive-include tests/fixtures LICENSE
 recursive-include app/assets *.svg

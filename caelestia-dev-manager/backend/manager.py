@@ -18,6 +18,7 @@ from backend.backups import Backups, now
 from backend.runtime import Runtime
 from backend.desktop import SHORTCUT_TYPES, ShortcutConflict, desktop_directory, shortcut_filename, shortcut_descriptor
 from backend.dependencies import DependencyError, clean_output, failure_report, python_version, report as dependency_report
+from backend import host_integration
 
 def locked(method):
     @functools.wraps(method)
@@ -346,7 +347,10 @@ class Manager:
             dependencies = self.prepared_path(m)
             if not self.dependencies_prepared(m): raise SafetyError("Prepare Python dependencies before installation; this is a separate reviewed network operation. Open Dependencies for missing packages or version mismatches.")
         entries = installer(self.paths, m).plan_install(m, files, dependencies)
-        enabled = old.get("enabled") if old and old.get("installed") else m["type"] not in {"user-service", "caelestia-plugin", "qml-component"}
+        host_plan = host_integration.plan(self.paths, m)
+        enabled = old.get("enabled") if old and old.get("installed") else host_integration.requested(m) or m["type"] not in {"user-service", "caelestia-plugin", "qml-component"}
+        if host_plan and not enabled and host_integration.requested(m):
+            host_plan["summary"] = host_plan["summary"].replace("enable the plugin", "preserve its disabled state")
         if not enabled:
             entries = self.disabled_plan(m, entries)
         requested = self.desired_shortcut(m, old, create_shortcut)
@@ -372,12 +376,15 @@ class Manager:
             if path.exists() and (not path.is_file() or digest(path.read_bytes()) != f["checksum"] or path.stat().st_mode & 0o777 != f["mode"]):
                 raise SafetyError(f"Installed file was modified; back it up and resolve it before updating: {path}")
         return {"id": id, "manifest": m, "source_hash": self.source_hash(files), "files": entries,
+                "host_integration": host_plan, "enabled": enabled,
                 "remove": [f for f in previous if f["path"] not in {str(x.path) for x in entries}],
                 "warnings": validation["warnings"], "prepared": dependencies,
                 "desktop_shortcut": shortcut, "create_shortcut": requested, "shortcut_filename": shortcut_filename,
                 "preview": "\n".join(("REPLACE " if str(x.path) in previous_by_path else "CREATE ") + str(x.path) +
                                       (" [executable]" if x.mode & 0o111 else "") for x in entries) +
-                           "\n" + "\n".join("REMOVE " + f["path"] for f in previous if f["path"] not in {str(x.path) for x in entries})}
+                           "\n" + "\n".join("REMOVE " + f["path"] for f in previous if f["path"] not in {str(x.path) for x in entries}) +
+                           ("\n\nCAELESTIA KDE INTEGRATION\n" + host_plan["summary"] + "\n" +
+                            "\n".join("REVIEW HOST FILE " + str(self.paths.shell / name) + "\nBEFORE\n" + host_plan["before"][name] + "\nAFTER\n" + host_plan["after"][name] for name in host_plan["before"]) if host_plan else "")}
 
     def disabled_plan(self, m, files):
         result = []
@@ -391,9 +398,10 @@ class Manager:
             result.append(f)
         return result
 
-    def transact(self, record, entries, removals, new_record, reason, retain=()):
+    def transact(self, record, entries, removals, new_record, reason, retain=(), host_plan=None):
         """Backup → durable intent → files → SQLite commit → clear intent. Recoverable on crash."""
         self.ready()
+        host_integration.check(self.paths, host_plan)
         m = new_record.get("installed_manifest", new_record["manifest"])
         targets = {str(x.path): {"path": str(x.path)} for x in entries}
         targets.update({f["path"]: f for f in removals})
@@ -409,13 +417,14 @@ class Manager:
         snapshot.update(targets)
         backup = self.backups.create(backup_record, list(snapshot.values()), reason, [new_record.get("desktop_shortcut")])
         intent = {"backup": backup["backup_id"], "record": record, "ownership": old_files,
-                  "operation_id": uuid.uuid4().hex, "phase": "applying"}
+                  "operation_id": uuid.uuid4().hex, "phase": "applying", "host_integration": host_plan}
         atomic_write(self.journal, json.dumps(intent).encode(), 0o600)
         try:
             for f in entries: atomic_write(self.allowed(new_record, f.path, record.get("desktop_shortcut")), f.content(), f.mode)
             for f in removals:
                 path = self.allowed(record, Path(f["path"]), new_record.get("desktop_shortcut"))
                 if path.exists(): path.unlink()
+            host_integration.apply(self.paths, host_plan)
             receipt = [*retain, *[{"path": str(f.path), "checksum": f.checksum, "mode": f.mode} for f in entries]]
             new_record["last_operation"] = intent["operation_id"]
             with self.registry.db:
@@ -441,6 +450,7 @@ class Manager:
             self.journal.unlink()
             return "Committed operation finalized"
         backup = self.backups.read(intent["backup"])
+        host_integration.recover(self.paths, intent.get("host_integration"))
         m = backup["record"]["installed_manifest"]
         for f in backup["files"]:
             path = self.paths.allowed(m, Path(f["path"]), [backup["record"].get("desktop_shortcut"), *backup.get("approved_shortcuts", [])])
@@ -476,11 +486,11 @@ class Manager:
         if expected:
             previous = [(str(x.path), x.checksum, x.mode) for x in expected["files"]]
             current = [(str(x.path), x.checksum, x.mode) for x in plan["files"]]
-            if previous != current or expected["source_hash"] != plan["source_hash"]: raise SafetyError("Installation changed since preview; review a fresh plan")
+            if previous != current or expected["source_hash"] != plan["source_hash"] or expected.get("host_integration") != plan.get("host_integration"): raise SafetyError("Installation changed since preview; review a fresh plan")
         record = self.registry.get(id)
         m = plan["manifest"]
         new = {**record, "manifest": m, "installed_manifest": m, "installed": True, "draft": False,
-               "enabled": record.get("enabled", True) if record.get("installed") else m["type"] not in {"user-service", "caelestia-plugin", "qml-component"},
+               "enabled": plan["enabled"],
                "installed_version": m["version"], "installed_source_hash": plan["source_hash"],
                "installed_at": record.get("installed_at") or now(), "updated_at": now(), "destination": str(self.paths.root(m)),
                "desktop_shortcut": plan["desktop_shortcut"], "desktop_shortcut_requested": plan["create_shortcut"],
@@ -488,9 +498,11 @@ class Manager:
         entries = plan["files"]
         # Services must be stopped while replacing their executable source.
         if m["type"] == "user-service" and record.get("installed"): self.runtime.systemctl("stop", self.runtime.unit(id))
-        self.transact(record, entries, plan["remove"], new, "Updated installed version" if record.get("installed") else "Installed component")
+        self.transact(record, entries, plan["remove"], new, "Updated installed version" if record.get("installed") else "Installed component", host_plan=plan["host_integration"])
         if m["type"] == "user-service": self.runtime.systemctl("daemon-reload")
         if m["type"] in SHORTCUT_TYPES: self.runtime.refresh_desktop()
+        if host_integration.requested(m) and self.runtime.real:
+            self._reload_caelestia()
         return new
 
     def installed(self, id):
@@ -571,6 +583,7 @@ class Manager:
     def plan_uninstall(self, id):
         record = self.installed(id)
         self.check_owned(record)
+        host_integration.plan(self.paths, {"id": id})
         return self.registry.files(id)
 
     @locked
@@ -583,9 +596,11 @@ class Manager:
         elif m["type"] in {"standalone-app", "script"}: self.runtime.stop(record)
         new = {**record, "installed": False, "enabled": False, "uninstalled_at": now(),
                "reload_required": m["type"] in {"caelestia-plugin", "qml-component"}}
-        self.transact(record, [], files, new, "Uninstalled owned files; source preserved")
+        self.transact(record, [], files, new, "Uninstalled owned files; source preserved", host_plan=host_integration.plan(self.paths, {"id": id}))
         if m["type"] == "user-service": self.runtime.systemctl("daemon-reload")
         if m["type"] in SHORTCUT_TYPES: self.runtime.refresh_desktop()
+        if host_integration.requested(m) and self.runtime.real:
+            self._reload_caelestia()
 
     @locked
     def set_enabled(self, id, enabled):
@@ -619,6 +634,8 @@ class Manager:
         new = {**record, "enabled": enabled, "reload_required": m["type"] in {"caelestia-plugin", "qml-component"}}
         self.transact(record, entries, remove, new, "Enabled component" if enabled else "Disabled component")
         if m["type"] in SHORTCUT_TYPES: self.runtime.refresh_desktop()
+        if host_integration.requested(m) and self.runtime.real:
+            self._reload_caelestia()
 
     @locked
     def backup(self, id):
@@ -635,6 +652,7 @@ class Manager:
         if not record: raise SafetyError("Restore requires the component registry record")
         if not meta["record"].get("installed"): raise SafetyError("This backup records an uninstalled state; use Uninstall instead")
         self.check_owned(record)
+        host_integration.plan(self.paths, meta["record"]["installed_manifest"])
         # Update backups include newly-created destinations marked absent. Only present blobs are restored.
         entries = [FilePlan(Path(f["path"]), self.backups.content(meta, f), mode=f["mode"]).seal() for f in meta["files"] if f["exists"]]
         for f in entries:
@@ -662,13 +680,15 @@ class Manager:
         if "store_origin" in record: new["store_origin"] = record["store_origin"]
         else: new.pop("store_origin", None)
         if new["installed_manifest"]["type"] == "user-service": self.runtime.systemctl("stop", self.runtime.unit(record["id"]))
-        self.transact(record, entries, remove, new, "Restored backup " + backup_id)
+        self.transact(record, entries, remove, new, "Restored backup " + backup_id, host_plan=host_integration.plan(self.paths, new["installed_manifest"]))
         if new["installed_manifest"]["type"] == "user-service": self.runtime.systemctl("daemon-reload")
         if new["installed_manifest"]["type"] in SHORTCUT_TYPES: self.runtime.refresh_desktop()
         if new["installed_manifest"]["type"] in {"caelestia-plugin", "qml-component"}:
             with self.registry.db:
                 new["reload_required"] = True
                 self.registry.save(new)
+        if self.runtime.real and (host_integration.requested(new["installed_manifest"]) or host_integration.requested(record["installed_manifest"])):
+            self._reload_caelestia()
 
     @locked
     def delete_source(self, id, confirmation):
@@ -720,6 +740,15 @@ class Manager:
                 result["pids"] = self.runtime.processes(record)
                 result["running"] = bool(result["pids"])
         else: result["running"] = False
+        if record.get("installed") and host_integration.requested(installed_manifest):
+            try:
+                if not host_integration.receipt_path(self.paths).is_file():
+                    raise SafetyError("Quick Toggles integration receipt is missing")
+                host_integration.plan(self.paths, installed_manifest)
+                result["host_integration_status"] = "Quick Toggles menu installed"
+            except (OSError, ValueError) as error:
+                result["host_integration_status"] = str(error)
+                result["modified"].append("Quick Toggles integration: " + str(error))
         if result["missing"]: result["status"] = "Missing Files"
         elif result["modified"]: result["status"] = "Broken"
         elif result.get("service_state") == "failed" or result.get("service_load_state") in {"bad-setting", "error", "not-found"}: result["status"] = "Broken"
@@ -728,13 +757,20 @@ class Manager:
             result["status"] = "Running" if result["running"] else "Enabled" if result["enabled"] else "Disabled"
             if result["source_modified"]: result["status"] += " • Update Available"
             if record.get("reload_required"): result["status"] += " • Reload Required"
-        else: result["status"] = "Draft" if record.get("draft") else "Ready" if result["validation"]["valid"] else "Incompatible / Broken"
+        else:
+            errors = result["validation"]["errors"]
+            missing_dependencies = errors and all(error.startswith("Missing system executable") for error in errors)
+            result["status"] = ("Draft" if record.get("draft") else "Ready" if result["validation"]["valid"]
+                                else "Missing Dependencies" if missing_dependencies else "Incompatible / Broken")
         return result
 
     def all_status(self): return [self.status(r) for r in self.registry.all()]
 
     @locked
     def reload_caelestia(self):
+        return self._reload_caelestia()
+
+    def _reload_caelestia(self):
         self.ready()
         if not self.environment.get("plugin_supported"): raise SafetyError("Caelestia integration is unverified")
         self.runtime.systemctl("restart", "caelestia-shell.service")

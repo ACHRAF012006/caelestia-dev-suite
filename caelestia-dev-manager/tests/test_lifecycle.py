@@ -203,6 +203,26 @@ def test_installed_compatibility_tracks_environment(manager, app_files):
     record["installed_manifest"]["compatibility"] = {"plasma": "impossible-version"}
     assert manager.status(record)["status"] == "Incompatible"
 
+def test_missing_executable_is_identified_without_allowing_install(manager, app_files, monkeypatch):
+    import shutil
+    original_which = shutil.which
+    m, files = app_files
+    m["dependencies"] = {"system": ["catt"], "python": []}
+    files["manifest.json"] = json.dumps(m)
+    monkeypatch.setattr("backend.validators.shutil.which", lambda name: "/test/catt" if name == "catt" else original_which(name))
+    manager.create(files)
+    monkeypatch.setattr("backend.validators.shutil.which", lambda name: None if name == "catt" else original_which(name))
+    status = manager.status(manager.registry.get(m["id"]))
+    assert status["status"] == "Missing Dependencies"
+    assert status["compatible"]
+    assert status["validation"]["errors"] == ["Missing system executable: catt (install manually)"]
+    with pytest.raises(SafetyError, match="Missing system executable: catt"):
+        manager.plan_install(m["id"])
+    # An actual source error still takes precedence over the dependency label.
+    manager.save_file(m["id"], "src/main.py", "def broken(")
+    assert manager.status(manager.registry.get(m["id"]))["status"] == "Incompatible / Broken"
+    assert not manager.registry.files(m["id"])
+
 def fake_shell(manager):
     from backend.paths import atomic_write
     atomic_write(manager.paths.shell / "services/PluginLoader.qml", b'metadata.json Qt.createComponent target: "plugins"')

@@ -40,6 +40,16 @@ def route(host):
         return local_ip(sock.getsockname()[0])
 
 
+def merge_devices(discovered, manual):
+    """Manual IPs bypass mDNS only; actual Cast connectivity is checked on Start."""
+    result = {device["host"]: device for device in discovered}
+    for device in manual:
+        host = local_ip(device["host"])
+        result[host] = {"id": "manual:" + host, "host": host, "name": device["name"],
+                        "supported": True, "manual": True, "detail": "Manual IP · Cast TCP 8009; reachability checked when selected"}
+    return sorted(result.values(), key=lambda device: device["name"].casefold())
+
+
 class Cast:
     def __init__(self, processes):
         self.processes = processes

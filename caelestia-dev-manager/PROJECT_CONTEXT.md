@@ -1,8 +1,8 @@
 # Project context
 
-Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.3.2. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
+Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.4.0. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
 
-Read README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md (alias to COMPONENT_SPEC), docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md and docs/CODEX_WORKFLOW.md before changing component behavior.
+Read README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md (alias to COMPONENT_SPEC), docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md, docs/CODEX_WORKFLOW.md and docs/COMPONENT_STORE.md before changing component behavior.
 
 The manager administers existence and lifecycle; it is never the runtime container for components. Development source is `plugins/<id>/`; installed code is a separate snapshot. Installed components survive manager exit and manager uninstall. Do not build real Notes or another extension unless asked.
 
@@ -21,3 +21,5 @@ Tab navigation reuses display snapshots. Startup, manual Refresh and stale-view 
 The manager uses `app/assets/icon.svg`, a bundled SVG with fixed colors, for its window icon and desktop launcher. The installer copies it to its owned manager root and records its checksum; the desktop Icon field uses that absolute installed path instead of a system theme name. SVG assets must be included in both wheel and source distributions. Component shortcuts already copy the declared original SVG's absolute installed path.
 
 The GitHub suite separates `caelestia-dev-manager/` (manager, installer and docs) from `components/<id>/` (published component source). The Component Store uses the built-in suite/main catalogue without repository fields. It fetches Git objects on startup in a background worker; it never checks out or executes catalogue code. One Install/Update/Open button downloads inert local source and proceeds into existing dependency and installation reviews. Summaries are readable with full source/exact plans available as technical details; there is no Code tab. Cancelling may retain downloaded development source but never changes installed files. Previous version selects a differing installed backup and preserves current source, store provenance and runtime configuration. Protect local edits, pin downloads to a commit and retain previous source in XDG data source-backups. Never pull catalogue changes directly into installed runtimes. See docs/COMPONENT_STORE.md.
+
+Cast Audio 0.2 declares integration.target=caelestia-quick-toggles. The manager owns a checksum-pinned two-file adapter with separate host receipts and transaction recovery. New installs enable it and restart the shell; updates preserve disabled state; uninstall restores original host files. Never execute component-supplied patches or generalize this into arbitrary host writes. Read docs/QUICK_TOGGLES_INTEGRATION.md.

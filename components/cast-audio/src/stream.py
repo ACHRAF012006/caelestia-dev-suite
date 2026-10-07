@@ -1,5 +1,6 @@
 """Memory-only live MP3 fanout on one LAN interface; no remote control API."""
 import asyncio
+import errno
 from collections import deque
 import secrets
 import time
@@ -9,9 +10,10 @@ from safety import Failure
 
 
 class Stream:
-    def __init__(self, processes, address, receiver):
+    def __init__(self, processes, address, receiver, port=0):
         self.processes, self.address, self.receiver = processes, address, receiver
         self.path = "/" + secrets.token_hex(24) + "/live.mp3"
+        self.port = port
         self.server = self.encoder = self.pump = None
         self.queues, self.clients = set(), set()
         self.recent = deque(maxlen=3)
@@ -23,7 +25,7 @@ class Stream:
 
     async def start(self, monitor, bitrate):
         try:
-            self.server = await asyncio.start_server(self.serve, self.address, 0, limit=16384)
+            self.server = await asyncio.start_server(self.serve, self.address, self.port, limit=16384)
             port = self.server.sockets[0].getsockname()[1]
             self.url = f"http://{self.address}:{port}{self.path}"
             self.encoder = await self.processes.spawn([
@@ -37,6 +39,10 @@ class Stream:
                 raise Failure(self.failure)
         except TimeoutError:
             raise Failure("Audio source unavailable: FFmpeg did not produce audio") from None
+        except OSError as error:
+            if error.errno == errno.EADDRINUSE:
+                raise Failure(f"Audio stream port {self.port} is in use; choose another port in Settings") from None
+            raise Failure("Audio stream could not bind the receiver route's local address") from None
 
     async def read_audio(self):
         try:

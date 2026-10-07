@@ -62,3 +62,7 @@ The installed loader contract is inspected before planning plugin installs. A ne
 ## Extending the platform
 
 Add manifest fields with strict validation, a target-specific adapter, supported capabilities and isolated safety tests. Document the verified host discovery/activation contract before supporting a new runtime. General KWin or Plasma widgets should use official KDE mechanisms in their own adapter. Dashboard tabs require an upstream hook or reviewed host changes; this platform currently does neither.
+
+## Manager-owned Quick Toggles integration (0.4)
+
+`backend/host_integration.py` implements the fixed Cast Audio-only adapter. Host plans are sealed independently of payload FilePlans and stored in the same durable transaction intent. Private receipts retain verified originals and installed hashes. Generic component destinations are unchanged. See [adapter contract](QUICK_TOGGLES_INTEGRATION.md) for automatic enable/restart, edit protection and recovery.

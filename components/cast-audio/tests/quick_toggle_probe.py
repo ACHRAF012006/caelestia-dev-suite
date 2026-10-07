@@ -13,6 +13,7 @@ import Caelestia
 import qs.components
 import qs.services
 import Caelestia.Config
+import CAST_COMPONENT_URL as CastUI
 import "modules/utilities/cards"
 
 ShellRoot {
@@ -33,62 +34,79 @@ ShellRoot {
     QtObject {
         id: fakeCast
         property var snapshot: ({state: "Off"})
-        property int opened: 0
-        function openPanel() { opened++; }
+        property bool menuExpanded: false
+        property int settingsOpened: 0
+        property var lastCommand: ({})
+        signal openMenuRequested()
+        property Component quickToggle: Component { CastUI.CastMenu { controller: fakeCast } }
+        function setMenuExpanded(value) { menuExpanded = value; }
+        function menuVisible(value) {}
+        function openSettings() { settingsOpened++; }
+        function send(message) { lastCommand = message; }
     }
     function check(value, message) {
-        if (!value) { failed = true; console.error("CAST_ICON_FAIL", message); }
+        if (!value) { failed = true; console.error("CAST_MENU_FAIL", message); }
     }
-    function findIcon(item) {
-        if (item.objectName === "castAudioQuickToggle") return item;
+    function findItem(item, name) {
+        if (item.objectName === name) return item;
         for (let child of item.children || []) {
-            const found = findIcon(child);
+            const found = findItem(child, name);
             if (found) return found;
         }
         return null;
     }
     Component.onCompleted: {
-        console.log("CAST_ICON_START");
+        console.log("CAST_MENU_START");
         GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: true}];
         PluginLoader.pluginInstances = {"cast-audio": fakeCast};
         PluginLoader.loadedCount = 1;
         check(card !== null, "host card instantiation");
-        console.log("CAST_ICON_CREATED", card !== null);
+        console.log("CAST_MENU_CREATED", card !== null);
     }
     Timer {
         interval: 350; repeat: true; running: true
         onTriggered: {
-            console.log("CAST_ICON_PHASE", root.phase);
+            console.log("CAST_MENU_PHASE", root.phase);
             if (!root.card) { root.check(false, "missing card"); Qt.quit(); return; }
-            const icon = root.findIcon(root.card);
+            const menu = root.findItem(root.card, "castAudioMenu");
             if (root.phase === 0) {
-                root.check(icon !== null, "icon appears with loaded plugin");
-                if (!icon) { Qt.quit(); return; }
-                root.check(icon.icon === "cast" && !icon.checked, "idle icon state");
-                icon.clicked();
+                root.check(menu !== null, "separate menu row appears with loaded plugin");
+                root.check(!root.findItem(root.card, "castAudioQuickToggle"), "no Cast icon delegate");
+                if (!menu) { Qt.quit(); return; }
+                root.check(!menu.expanded, "menu starts collapsed");
+                root.findItem(menu, "castAudioExpand").clicked();
+                fakeCast.snapshot = {state: "Off", message: "Choose a receiver", devices: [{id: "manual:192.168.20.8", host: "192.168.20.8", name: "VLAN Speaker", manual: true, supported: true}], settings: {}};
             } else if (root.phase === 1) {
-                root.check(fakeCast.opened === 1, "click opens receiver controls");
-                root.check(!drawers.utilities, "click closes utilities drawer");
-                fakeCast.snapshot = {state: "Casting"};
+                root.check(menu && menu.expanded, "row expands without opening a window");
+                const receiver = root.findItem(menu, "castAudioReceiver");
+                root.check(receiver !== null, "receiver list is embedded in row");
+                if (receiver) receiver.clicked();
+                root.check(fakeCast.lastCommand.action === "start" && fakeCast.lastCommand.id === "manual:192.168.20.8", "receiver selects the requested saved IP");
+                root.findItem(menu, "castAudioSettings").clicked();
+                root.check(fakeCast.settingsOpened === 1, "Settings button launches settings app action");
+                drawers.utilities = false;
+                fakeCast.openMenuRequested();
+                root.check(drawers.utilities, "IPC opens the Quick Toggles drawer");
+                fakeCast.snapshot = {state: "Casting", receiver: "VLAN Speaker", devices: [], settings: {}};
             } else if (root.phase === 2) {
-                root.check(icon && icon.icon === "cast_connected" && icon.checked, "live casting highlight");
+                root.check(menu && menu.state.state === "Casting", "live state stays in embedded menu");
                 GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: false}];
             } else if (root.phase === 3) {
-                root.check(!icon, "Nexus setting hides icon");
+                root.check(!menu, "Nexus setting hides row");
                 GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: true}];
             } else if (root.phase === 4) {
-                root.check(icon !== null, "Nexus setting restores icon");
+                root.check(menu !== null, "Nexus setting restores row");
                 PluginLoader.pluginInstances = {};
                 PluginLoader.loadedCount = 0;
             } else if (root.phase === 5) {
-                root.check(!icon, "unloading plugin removes icon");
-                if (!root.failed) console.log("CAST_ICON_PASS");
+                root.check(!menu, "unloading plugin removes row");
+                if (!root.failed) console.log("CAST_MENU_PASS");
                 Qt.quit();
             }
             root.phase++;
         }
     }
-    Timer { interval: 6000; running: true; onTriggered: { console.error("CAST_ICON_FAIL timeout"); Qt.quit(); } }
+    Timer { interval: 6000; running: true; onTriggered: { console.error("CAST_MENU_FAIL timeout"); Qt.quit(); } }
 }
 '''
 
@@ -98,14 +116,16 @@ def main():
     parser.add_argument("--shell", type=Path, required=True, help="Caelestia KDE shell source (read only)")
     args = parser.parse_args()
     patch = Path(__file__).resolve().parents[1] / "patches/quick-toggles.patch"
-    with tempfile.TemporaryDirectory(prefix="cast-icon-probe-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cast-menu-probe-") as temporary:
         base = Path(temporary)
         preview = base / "shell"
         shutil.copytree(args.shell, preview, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        if "castAudioQuickToggle" not in (preview / "modules/utilities/cards/Toggles.qml").read_text():
+        if "castAudioQuickToggle" in (preview / "modules/utilities/cards/Toggles.qml").read_text():
+            subprocess.run(["git", "apply", "-p2", "--reverse", str(patch.with_name("legacy-icon.patch"))], cwd=preview, check=True)
+        if "castAudioMenuLoader" not in (preview / "modules/utilities/cards/Toggles.qml").read_text():
             subprocess.run(["git", "apply", "-p2", "--check", str(patch)], cwd=preview, check=True)
             subprocess.run(["git", "apply", "-p2", str(patch)], cwd=preview, check=True)
-        (preview / "shell.qml").write_text(QML)
+        (preview / "shell.qml").write_text(QML.replace("CAST_COMPONENT_URL", __import__("json").dumps(Path(__file__).resolve().parents[1].as_uri())))
         runtime = base / "runtime"
         runtime.mkdir(mode=0o700)
         # The host imports PanelWindow types, which require the Wayland backend
@@ -125,11 +145,11 @@ def main():
         result = subprocess.run(["quickshell", "--path", str(preview), "--no-color"], env=env,
                                 capture_output=True, text=True, timeout=12)
         output = result.stdout + result.stderr
-        if result.returncode or "CAST_ICON_PASS" not in output or "CAST_ICON_FAIL" in output:
+        if result.returncode or "CAST_MENU_PASS" not in output or "CAST_MENU_FAIL" in output:
             print("Probe exit code:", result.returncode)
             print(output)
             raise SystemExit("Cast Quick Toggle probe failed")
-        print("PASS: host QML compiles; icon, click, casting highlight, Nexus visibility and plugin unload work.")
+        print("PASS: host QML compiles; expandable row, embedded IP receiver selection, Settings action, drawer opening, Nexus visibility and unload work.")
 
 
 if __name__ == "__main__":

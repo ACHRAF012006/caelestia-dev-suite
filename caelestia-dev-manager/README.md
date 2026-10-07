@@ -47,21 +47,25 @@ stored in manager settings. See [component store details](docs/COMPONENT_STORE.m
 2. **Analyze Code / Preview Files** parses the package without executing it. Inspect the Files, Manifest, Destination and Validation tabs.
 3. **Create Component** writes development source under `plugins/<id>/`. **Save as Draft** permits incomplete static validation, but still requires safe paths and valid metadata.
 4. Use **Open Source** in Components to edit development files with your preferred editor. **Install** reviews permissions before writing installed files; **Show technical details** includes exact destinations, generated launchers, services, dependencies and complete source. There is no Code tab.
-5. Launch the application from KDE. Enable services explicitly. Caelestia plugins install undiscoverable initially; enable them and explicitly reload the shell through Settings.
+5. Launch the application from KDE. Enable services explicitly. General Caelestia plugins install undiscoverable initially; enable them and reload through Settings. Cast Audio uses the reviewed automatic Quick Toggles adapter described below.
 6. Editing source changes nothing live. **Update Installed Version** applies the source snapshot after review and backup.
 7. **Disable**, **Uninstall** and **Delete Source** have separate meanings. Source deletion requires typing the component ID; uninstall keeps source.
 
 Select a component and open **Dependencies** to check its declared system executables and Python package versions. Development preparation and the installed runtime are shown separately; packages installed in the manager or global Python do not satisfy a component's isolated environment. The component details show missing tools, unprepared packages and version mismatches without downloads or executing component code. **Install / Update** offers reviewed preparation or retry.
 
+Uninstalled components blocked only by missing executables show **Missing Dependencies**, with the exact names in Dependencies and Validation. They are not counted as broken source. Installation stays blocked until those tools are available; compatibility and source errors still retain their own failure status.
+
 Preparation failures show the component, the requirement reported by pip (including transitive packages), the Python version and captured output. Network/index failures are distinguished from unavailable binary wheels and dependency conflicts. A redacted diagnostic is retained for that component's current dependency set and in Logs; authenticated URLs are removed. Failed preparation never marks the environment ready or proceeds with installation. Only binary wheels are accepted; no source builds or global package installation are enabled.
 
-**Codex Context** assembles the environment, inventory, architecture, component spec, package format and current request into one clipboard prompt. Components are never added as runtime pages inside this manager.
+**Codex Context** assembles the environment, inventory, dependency diagnostics, architecture, component spec, package format and current request into one clipboard prompt. It includes the GitHub store target, publishing layout and verification steps. State whether your request includes publishing: local `plugins/<id>/` projects appear in the store only after their complete source reaches the suite's `components/<id>/` on `main`. Components are never added as runtime pages inside this manager.
 
 Standalone apps and scripts offer **Create shortcut on desktop** in New Component, Create / Import and the installation preview. It defaults to off; packages can opt in with `"desktop": {"createShortcut": true}`. Installed component actions can create/remove the shortcut separately. Shortcuts copy the normal application launcher into your configured XDG desktop directory, including localized paths. Existing unrelated files are preserved; the UI offers an alternate filename. Owned shortcuts are backed up and removed with component uninstall. See [desktop shortcuts](docs/DESKTOP_SHORTCUTS.md).
 
 ## Verified Caelestia integration
 
 The inspected upstream and installed shell use `metadata.json` discovery at `$XDG_CONFIG_HOME/caelestia/plugins/<id>/`, loading a `quickshell` plugin's `main.qml` or explicit `ui`. The exposed plugin IPC supports count only. The manager does not invent an external activation API. It changes only its owned discovery file (`metadata.json` / `metadata.json.disabled`) and offers an explicit shell-service restart. See [environment findings](docs/ENVIRONMENT_FINDINGS.md) for inspected paths, source links and commit.
+
+Cast Audio 0.2 uses the manager 0.4 [verified Quick Toggles adapter](docs/QUICK_TOGGLES_INTEGRATION.md): a separate expandable receiver row with a Settings app, saved device IPs and optional fixed audio stream port. Reviewed installation adds the row, enables new installs and restarts Caelestia. Updates preserve disabled state. Removal restores the original host files; later host edits block replacement. Google account discovery is unavailable in this Linux backend.
 
 Dashboard tabs in the inspected source are a fixed list. Dashboard injection and general KDE/KWin extensions are not supported by this release. A future adapter needs a verified runtime contract.
 
@@ -85,6 +89,6 @@ The automated suite uses temporary paths. The separate desktop acceptance helper
 
 ## Current limits
 
-Version 0.1 handles UTF-8 text packages, including SVG assets. Raster/binary package assets, archive import, compiled application build pipelines, KWin/Plasma package adapters and arbitrary QML module destinations are not implemented. Python/QML/shell applications, commands, Python/shell services and verified Caelestia Quickshell plugins are supported. Static validation checks Python syntax and metadata; it cannot prove code safety or guarantee QML imports compile. Python dependency preparation runs as a separately reviewed synchronous operation and can temporarily block the UI. App PID detection is best effort through `/proc`; applications that replace themselves or fork away from installed paths may not be detected.
+Version 0.4 handles UTF-8 text packages, including SVG assets. Raster/binary package assets, archive import, compiled application build pipelines, KWin/Plasma package adapters and arbitrary QML module destinations are not implemented. Python/QML/shell applications, commands, Python/shell services and verified Caelestia Quickshell plugins are supported. Static validation checks Python syntax and metadata; it cannot prove code safety or guarantee QML imports compile. Python dependency preparation runs as a separately reviewed synchronous operation and can temporarily block the UI. App PID detection is best effort through `/proc`; applications that replace themselves or fork away from installed paths may not be detected.
 
 Start future work with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md). No real Notes app or user extension is included.

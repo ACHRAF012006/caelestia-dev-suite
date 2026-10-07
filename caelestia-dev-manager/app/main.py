@@ -22,6 +22,7 @@ from app.inspection import Inspection
 from app import preferences
 from backend.paths import VERSION, Paths, SafetyError, no_symlinks, relative
 from backend.manager import Manager
+from backend import host_integration
 from backend.validators import TYPES, RUNTIMES, manifest_parse, validate
 from backend.codex import context
 from backend.codex.package import parse, detect, encode
@@ -320,8 +321,8 @@ class Window(QMainWindow):
         self.guard(load)
 
     def make_context(self):
-        p, layout = page("Codex Context", "Generate a complete prompt with the environment, component contract, project conventions, and your request.")
-        self.request = QTextEdit(); self.request.setPlaceholderText("What do you want Codex to build?"); self.request.setMaximumHeight(150); layout.addWidget(self.request)
+        p, layout = page("Codex Context", "Generate a prompt with your environment, dependency diagnostics, component contract, and GitHub store publishing steps.")
+        self.request = QTextEdit(); self.request.setPlaceholderText("Describe what to build or fix, and whether to publish it to the GitHub Component Store."); self.request.setMaximumHeight(150); layout.addWidget(self.request)
         layout.addLayout(row(button("Generate Prompt", self.generate_context), button("Copy Full Codex Prompt", self.copy_context, True)))
         self.context_editor = CodeEditor(readonly=True); layout.addWidget(self.context_editor); self.stack.addWidget(p)
 
@@ -329,7 +330,7 @@ class Window(QMainWindow):
         if not self.snapshot_ready:
             self.context_editor.setPlainText("Loading component information…")
             return ""
-        prompt = context(self.manager, self.request.toPlainText(), self.statuses)
+        prompt = context(self.manager, self.request.toPlainText(), self.statuses, self.dependency_reports)
         if prompt != self.context_editor.toPlainText(): self.context_editor.setPlainText(prompt)
         return prompt
 
@@ -356,6 +357,9 @@ class Window(QMainWindow):
     def restore_backup(self):
         id = self.selected_backup(); meta, record, entries, remove = self.manager.plan_restore(id)
         text = "RESTORE " + meta["component_id"] + "\n" + "\n".join("WRITE " + str(x.path) for x in entries) + "\n" + "\n".join("REMOVE " + f["path"] for f in remove)
+        host = host_integration.plan(self.manager.paths, meta["record"]["installed_manifest"])
+        if host:
+            text += "\n\n" + host["summary"] + "\nCaelestia KDE will restart.\n" + json.dumps(host, indent=2)
         if self.confirm("Restore installed backup", text, "Restore"):
             self.manager.restore(id); self.refresh(); self.notify("Backup restored; inspect service state and reload Caelestia if required")
 
@@ -456,7 +460,7 @@ class Window(QMainWindow):
                   "Enabled": sum(bool(x.get("enabled")) for x in self.statuses),
                   "Running Apps": sum(x["running"] and x["manifest"]["type"] == "standalone-app" for x in self.statuses),
                   "Updates": sum(x["source_modified"] for x in self.statuses),
-                  "Broken": sum(bool(x["missing"] or x["modified"] or (not x["validation"]["valid"] and x["source_exists"])) for x in self.statuses)}
+                  "Broken": sum(bool(x["missing"] or x["modified"] or (not x["validation"]["valid"] and x["source_exists"] and x["status"] != "Missing Dependencies")) for x in self.statuses)}
         for title, metric in self.metrics.items(): metric.setText(str(counts[title]))
         self.dashboard_text.setPlainText("DEVELOPMENT WORKFLOW\n\n1. Create a template or paste a Codex package\n2. Preview files and validate source\n3. Review installation destinations and executable source\n4. Install into the real application, shell or service environment\n5. Update installed copies when source changes\n\n" +
                                          ("\n".join(x["manifest"]["name"] + "  •  " + x["status"] for x in self.statuses) or "No components yet. Start with New Component or Paste Codex Package."))
@@ -585,6 +589,8 @@ class Window(QMainWindow):
                     "\n\nPermissions\n" + ("\n".join("• " + p for p in m.get("permissions", [])) or "No additional permissions declared.") +
                     "\n\nExisting versions are backed up so you can go back. The app runs independently of Dev Manager.\nRestart an open app to use its updated version.")
                 if plan["warnings"]: options.summary_text += "\n\nPlease note\n" + "\n".join(plan["warnings"])
+                if plan.get("host_integration"):
+                    options.summary_text += "\n\nQuick Toggles integration\n" + plan["host_integration"]["summary"] + "\nTwo verified host files are backed up and tracked separately; technical details show the complete before/after source."
                 text += "\n\nCOMPLETE COMPONENT SOURCE\n" + encode(self.manager.read_source(self.current_id), m)
             except SafetyError as e:
                 options.plan = None; text = str(e); alternative.setVisible(isinstance(e, ShortcutConflict))
@@ -643,7 +649,10 @@ class Window(QMainWindow):
 
     def uninstall_selected(self):
         files = self.manager.plan_uninstall(self.current_id)
-        if self.confirm("Uninstall component", "Remove only these owned installed files:\n\n" + "\n".join(f["path"] for f in files) + "\n\nDevelopment source will remain. Running managed processes/services will be stopped.", "Uninstall"):
+        text = "Remove only these owned installed files:\n\n" + "\n".join(f["path"] for f in files) + "\n\nDevelopment source will remain. Running managed processes/services will be stopped."
+        if self.manager.installed(self.current_id).get("installed_manifest", {}).get("integration", {}).get("target") == "caelestia-quick-toggles":
+            text += "\n\nThe Cast menu bridge will be removed, its two original host files restored, and Caelestia KDE restarted. Host files changed since integration are preserved and block this operation."
+        if self.confirm("Uninstall component", text, "Uninstall"):
             self.manager.uninstall(self.current_id); self.refresh(); self.notify("Uninstalled owned files; source preserved")
 
     def open_source(self): QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.manager.paths.source(self.current_id))))

@@ -12,6 +12,7 @@ from backend.codex.package import encode
 from backend.paths import SafetyError
 from backend.store import Store, DEFAULT_REPOSITORY
 from backend.validators import validate
+from backend import host_integration
 
 
 class StoreCheck(QThread):
@@ -250,6 +251,10 @@ class StorePage(QWidget):
         options = QWidget()
         options.summary_text = ("Restore " + entry["manifest"]["name"] + " " + str(meta["version"]) + "?\n\nYour current installation is backed up first. Your settings and current development source are kept.\n\nClose and reopen the app after restoring. Background services will need to be started again.")
         details = "RESTORE " + meta["component_id"] + "\n" + "\n".join("WRITE " + str(f.path) for f in entries) + "\n" + "\n".join("REMOVE " + f["path"] for f in remove)
+        host = host_integration.plan(self.manager.paths, meta["record"]["installed_manifest"])
+        if host:
+            options.summary_text += "\n\n" + host["summary"] + " Caelestia KDE will restart."
+            details += "\n\n" + json.dumps(host, indent=2)
         if self.window.confirm("Go back to previous version", details, "Restore Version", options):
             self.manager.restore(meta["backup_id"]); self.window.refresh(); self.fill()
             self.status.setText("Version " + str(meta["version"]) + " restored. Close and reopen the app to use it.")

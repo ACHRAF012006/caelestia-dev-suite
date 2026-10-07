@@ -10,7 +10,9 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import audio
-from cast import Cast, devices
+from cast import Cast, devices, merge_devices
+from settings_ipc import SettingsServer
+from settings_client import request as settings_request
 from controller import Controller
 from processes import Processes
 from safety import Failure, Preferences, local_ip
@@ -39,6 +41,83 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(prefs.values["last"], "")
         with self.assertRaises(Failure):
             prefs.save({"command": "anything"})
+
+    async def test_manual_devices_are_persisted_and_deduplicated_with_discovery(self):
+        self.prefs.save({"manual_devices": [{"name": "VLAN Speaker", "host": "192.168.20.8"}], "stream_port": 48200})
+        restored = Preferences()
+        self.assertEqual(restored.values["stream_port"], 48200)
+        found = merge_devices([{"id": "discovered", "host": "192.168.20.8", "name": "Other label"}], restored.values["manual_devices"])
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["id"], "manual:192.168.20.8")
+        self.assertEqual(found[0]["name"], "VLAN Speaker")
+        with self.assertRaises(Failure):
+            self.prefs.save({"manual_devices": [{"name": "Public", "host": "8.8.8.8"}]})
+        with self.assertRaises(Failure):
+            self.prefs.save({"manual_devices": restored.values["manual_devices"] * 2})
+        with self.assertRaises(Failure):
+            self.prefs.save({"stream_port": 80})
+
+    async def test_manual_receiver_remains_usable_when_mdns_discovery_fails(self):
+        self.prefs.save({"manual_devices": [{"name": "Routed speaker", "host": "10.20.0.8"}]})
+        controller = Controller(self.prefs, self.processes, lambda value: None)
+        self.assertEqual(controller.devices[0]["host"], "10.20.0.8")
+        controller.cast.scan = AsyncMock(side_effect=Failure("mDNS unavailable"))
+        with patch("controller.audio.sources", new=AsyncMock(return_value=[])):
+            await controller.discover()
+        self.assertEqual(controller.devices[0]["id"], "manual:10.20.0.8")
+        controller.start = AsyncMock()
+        controller.begin("manual:10.20.0.8")
+        await controller.operation
+        controller.start.assert_awaited_once()
+
+    async def test_settings_socket_updates_preferences_and_preserves_active_cast(self):
+        controller = Controller(self.prefs, self.processes, lambda value: None)
+        server = SettingsServer(self.prefs, controller, controller.handle)
+        await server.start()
+        self.addAsyncCleanup(server.close)
+        self.assertEqual(server.path.stat().st_mode & 0o777, 0o600)
+        async def send(value):
+            reader, writer = await asyncio.open_unix_connection(str(server.path))
+            writer.write(json.dumps(value).encode() + b"\n")
+            await writer.drain()
+            response = json.loads(await reader.readline())
+            writer.close(); await writer.wait_closed()
+            return response
+        reply = await send({"action": "settings", "values": {"manual_devices": [{"name": "Speaker", "host": "10.2.0.5"}]}})
+        self.assertTrue(reply["ok"])
+        self.assertEqual(reply["snapshot"]["devices"][0]["host"], "10.2.0.5")
+        controller.state = "Casting"
+        reply = await send({"action": "settings", "values": {"bitrate": 320}})
+        self.assertFalse(reply["ok"])
+        self.assertEqual(controller.state, "Casting")
+        self.assertEqual(self.prefs.values["bitrate"], 192)
+        self.assertFalse((await send({"action": "start", "id": "manual:10.2.0.5"}))["ok"])
+
+    async def test_settings_app_can_save_while_plugin_is_not_running(self):
+        reply = settings_request({"action": "settings", "values": {"stream_port": 48200}})
+        self.assertTrue(reply["ok"])
+        self.assertEqual(Preferences().values["stream_port"], 48200)
+        with self.assertRaises(Failure):
+            settings_request({"action": "start"})
+
+    async def test_settings_server_refuses_an_existing_regular_file(self):
+        path = self.prefs.runtime / "settings.sock"
+        path.write_text("unrelated")
+        server = SettingsServer(self.prefs, Controller(self.prefs, self.processes, lambda value: None), AsyncMock())
+        with self.assertRaises(Failure):
+            await server.start()
+        self.assertEqual(path.read_text(), "unrelated")
+
+    async def test_fixed_stream_port_reports_collision_before_capture(self):
+        occupied = await asyncio.start_server(lambda reader, writer: writer.close(), "127.0.0.1", 0)
+        port = occupied.sockets[0].getsockname()[1]
+        stream = Stream(self.processes, "127.0.0.1", "127.0.0.1", port)
+        try:
+            with self.assertRaisesRegex(Failure, "in use"):
+                await stream.start("dummy.monitor", 192)
+            self.assertIsNone(stream.encoder)
+        finally:
+            occupied.close(); await occupied.wait_closed()
 
     async def test_timeout_reaps_only_owned_child(self):
         with self.assertRaises(Failure):

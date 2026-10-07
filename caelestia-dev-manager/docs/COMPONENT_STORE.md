@@ -91,3 +91,7 @@ Limits are 128 catalogue components, 500 files and 8 MiB of text per component,
 and 64 MiB of total catalogue text. Invalid components are skipped with a reason.
 The store does not update the manager itself. Use its GitHub bootstrap installer
 or rerun `install.sh` from reviewed manager source to update the manager.
+
+## Cast Audio panel integration
+
+Cast Audio 0.2 requires Dev Manager 0.4 or newer. Update the manager by rerunning `./install.sh` from current `caelestia-dev-manager/` source (or the suite bootstrap), then Refresh and review the component update. Manager releases are source/installer updates, not component catalogue entries. The reviewed Cast install automatically adds the expandable row, enables new installations and restarts the shell. See [adapter contract](QUICK_TOGGLES_INTEGRATION.md).

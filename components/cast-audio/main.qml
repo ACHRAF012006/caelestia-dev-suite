@@ -7,20 +7,32 @@ Item {
     id: root
     property var snapshot: ({state: "Off", message: "Starting helper…", devices: [], sources: [], settings: {}})
     property bool restarting: false
-    // Legacy card interface; the native Quick Toggle bridge uses openPanel/snapshot.
-    property Component quickToggle: Component { CastToggle { controller: root } }
+    property bool menuExpanded: false
+    property bool menuIsVisible: false
+    signal openMenuRequested()
+    property Component quickToggle: Component { CastMenu { controller: root } }
+
+    function setMenuExpanded(value) { menuExpanded = value; }
+    function menuVisible(value) {
+        menuIsVisible = value;
+        send({action: "visible", value: value});
+    }
+    function openSettings() {
+        Quickshell.execDetached(["quickshell", "--no-duplicate", "--path",
+            decodeURIComponent(Qt.resolvedUrl("SettingsApp.qml").toString().replace(/^file:\/\//, ""))]);
+    }
 
     function send(message) {
         if (helper.running)
             helper.write(JSON.stringify(message) + "\n");
     }
     function openPanel() {
-        panel.visible = true;
-        send({action: "visible", value: true});
+        menuExpanded = true;
+        openMenuRequested();
     }
     function toggle() {
-        if (snapshot.state === "Casting" || snapshot.state === "Connecting…")
-            send({action: "stop"});
+        if (menuExpanded)
+            menuExpanded = false;
         else
             openPanel();
     }
@@ -41,7 +53,7 @@ Item {
         command: ["python3", "-B", decodeURIComponent(Qt.resolvedUrl("src/main.py").toString().replace(/^file:\/\//, ""))]
         stdinEnabled: true
         running: true
-        onStarted: root.send({action: "visible", value: panel.visible})
+        onStarted: root.send({action: "visible", value: root.menuIsVisible})
         stdout: SplitParser {
             onRead: data => {
                 try {
@@ -63,16 +75,11 @@ Item {
         interval: 150
         onTriggered: { root.restarting = false; root.restartHelper(); }
     }
-    CastWindow {
-        id: panel
-        controller: root
-        visible: false
-        onVisibleChanged: root.send({action: "visible", value: visible})
-    }
     // A supported generic Quickshell IPC handler, provided by this plugin itself.
     IpcHandler {
         target: "castAudio"
         function open(): void { root.openPanel(); }
+        function settings(): void { root.openSettings(); }
         function toggle(): void { root.toggle(); }
         function stop(): void { root.send({action: "stop"}); }
     }

@@ -10,6 +10,7 @@ from child import guard
 from controller import Controller
 from processes import Processes
 from safety import Preferences, no_links
+from settings_ipc import SettingsServer
 
 
 def emit(value):
@@ -36,6 +37,12 @@ async def main():
             return
         processes = Processes(prefs)
         controller = Controller(prefs, processes, emit)
+        command_lock = asyncio.Lock()
+        async def dispatch(message):
+            async with command_lock:
+                await controller.handle(message)
+        settings_server = SettingsServer(prefs, controller, dispatch)
+        await settings_server.start()
         reader = asyncio.StreamReader(limit=16384)
         transport, _ = await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
 
@@ -47,7 +54,7 @@ async def main():
                         continue
                     if value.get("action") == "quit":
                         break
-                    await controller.handle(value)
+                    await dispatch(value)
             except (ValueError, OSError):
                 pass
             finally:
@@ -68,6 +75,7 @@ async def main():
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            await settings_server.close()
             await controller.close()
             transport.close()
 

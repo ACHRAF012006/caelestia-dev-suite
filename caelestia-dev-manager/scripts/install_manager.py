@@ -95,7 +95,9 @@ def main():
             if p.is_file() and not p.is_symlink(): files.append({"path": str(p), "checksum": checksum(p)})
         for p in (launcher, desktop):
             if p.exists(): files.append({"path": str(p), "checksum": checksum(p)})
-        write(receipt, json.dumps({"version": "0.3.2", "project": str(project), "files": files}, indent=2), 0o600)
+        import tomllib
+        manager_version = tomllib.loads((project / "pyproject.toml").read_text())["project"]["version"]
+        write(receipt, json.dumps({"version": manager_version, "project": str(project), "files": files}, indent=2), 0o600)
     for directory in (data / "caelestia-dev-manager/apps", data / "caelestia-dev-manager/backups", config / "caelestia-dev-manager", Path(os.environ.get("XDG_STATE_HOME", home / ".local/state")) / "caelestia-dev-manager"):
         no_links(directory).mkdir(parents=True, exist_ok=True)
     if shutil.which("desktop-file-validate"): subprocess.run(["desktop-file-validate", str(desktop)], check=True)

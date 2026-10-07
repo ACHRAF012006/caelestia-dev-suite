@@ -1,13 +1,29 @@
 # Codex workflow
 
-In **Codex Context**, enter the request and select **Copy Full Codex Prompt**. The resulting prompt contains read-first project files, actual read-only desktop/shell detection, manager version, component inventory, enabled state, paths, architecture, manifest contract, package framing and the current request.
+In **Codex Context**, enter the request and select **Copy Full Codex Prompt**. Say whether the task includes publishing to GitHub. The resulting prompt contains read-first project files, actual read-only desktop/shell detection, manager version, component inventory, enabled state, paths, architecture, manifest contract, package framing and the current request. It also includes declared dependencies, cached dependency reports, exact validation errors/warnings, source fingerprints, installed versions, store provenance and the GitHub publishing target.
 
 The UI uses its latest inspection snapshot when generating this prompt so opening the tab does not repeat installed-file hashing. Refresh component information first when you need newly changed runtime/source state. While the initial inspection is loading, prompt generation shows a loading message and Copy leaves the clipboard unchanged.
 
-Future Codex sessions must read PROJECT_CONTEXT.md, README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md, docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md and this document. Create source under `plugins/<component-id>/`. If the user wants copy/paste output, use `CAELESTIA_DEV_PACKAGE`.
+Future Codex sessions must read PROJECT_CONTEXT.md, README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md, docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md, docs/COMPONENT_STORE.md and this document. Create source under `plugins/<component-id>/`. If the user wants copy/paste output, use `CAELESTIA_DEV_PACKAGE`.
 
 Never make a new component a runtime page inside Dev Manager. Never require Dev Manager to remain open. Never directly modify production when source and an installation plan can be prepared first. Inspect installed Caelestia and current upstream before assuming integration paths or APIs. For a dashboard request, explain the verified limitations and design a supported integration or propose a separate upstream hook for review.
 
 The user pastes the returned package into Create / Import, checks Files/Manifest/Destination/Validation, saves development source, edits/tests it as appropriate, and reviews Install. Standalone apps then appear in KDE as their own entries. Services become user units; shell plugins become actual Caelestia components after activation/reload. Source changes produce Update Available; they do not mutate live code.
 
 Declare dependencies and permissions. No arbitrary install hooks, broad file deletions, symlinks, traversal, global Python modifications or sudo. Tests for destructive actions use temporary XDG roots. Components should write user data to their own XDG data/state paths, rather than modifying manager-owned executable files.
+
+## Resolve dependencies before delivery
+
+Missing executable errors are real installation blockers. Keep required tools in the manifest and verify them on the manager's PATH and, for shell plugins, the service's PATH. The manager prepares Python distributions only for Python runtimes; Quickshell plugins need separately installed Python-backed CLIs. For example, Cast Audio's README documents a private user environment for `catt==0.13.3`, with its launcher in `~/.local/bin`. Installing catt into the manager environment alone does not expose it to the shell. Revalidate after setup. Source-review warnings remain visible. General plugins need explicit restart; Cast Audio uses the manager-owned automatic adapter.
+
+## Deliver to the GitHub store
+
+The desktop store reads `https://github.com/ACHRAF012006/caelestia-dev-suite.git`, branch `main`. Local `plugins/<id>/` source is not a catalogue entry. Prepare the complete component under the suite's `components/<id>/`; manager changes belong under `caelestia-dev-manager/`. Read [the publishing contract](COMPONENT_STORE.md#publishing-components) included in the generated prompt.
+
+Inspect the checkout, remotes, current published version and unrelated work before editing. Use a separate suite checkout when the local manager has no remote. Bump versions for published updates, synchronize Caelestia host metadata and include all referenced source/assets and dependency instructions. Validate the exact publishable file mapping using `backend.store.checked_files(files, id)` and `backend.validators.validate(files, manifest, environment)`. Catalogue validity does not establish that every client has the required tools or compatible shell.
+
+If the request includes publication, commit only scoped files and push using existing credentials, without force pushes or global Git changes. A branch or PR does not become discoverable until merged into `main`. Verify the final remote snapshot through a fresh `Store.scan()` with an isolated cache, checking ID, version and `source_hash`. Report the repository link and commit plus test/scan results; surface authentication or branch-protection blockers honestly. If publication was not requested, prepare reviewable store-ready source and delivery steps. Users Refresh the store and review Install/Update afterward; publishing itself never modifies a running component.
+
+## Quick Toggles and receiver settings
+
+Read [Quick Toggles integration](QUICK_TOGGLES_INTEGRATION.md). Cast Audio is the only approved automatic host adapter in 0.4. It places receivers in a separate expandable row and opens only its advanced Settings in a separate app. Do not invent a plugin registration API or execute supplied patch files. Preserve host edits, seal preview state and include the host plan in recovery. Saved private IPv4 receivers and fixed stream ports support routed VLANs without changing firewall rules. Google Home APIs document Android/iOS SDKs; do not create a fake Linux sign-in or claim account-based Cast discovery.

@@ -1,76 +1,52 @@
 --- a/shell/modules/utilities/cards/Toggles.qml
 +++ b/shell/modules/utilities/cards/Toggles.qml
-@@ -2,6 +2,7 @@
- 
- import "../../background"
- import QtQuick
-+import QtQuick.Controls as Controls
- import QtQuick.Layouts
- import Quickshell
- import Quickshell.Bluetooth
-@@ -20,11 +21,21 @@
+@@ -20,6 +20,21 @@
      required property DrawerVisibilities visibilities
      required property BarPopouts.Wrapper popouts
  
-+    // Cast Audio bridge for Caelestia KDE's fixed Quick Toggles list.
++    // BEGIN Dev Manager Cast menu adapter
 +    readonly property var castAudioPlugin: {
 +        const loaded = PluginLoader.loadedCount;
 +        const plugin = PluginLoader.pluginInstances["cast-audio"];
-+        return loaded > 0 && plugin && typeof plugin.openPanel === "function" ? plugin : null;
++        return loaded > 0 && plugin && plugin.quickToggle ? plugin : null;
 +    }
++    readonly property bool castAudioVisible: !(Config.utilities.quickToggles || [])
++        .some(toggle => toggle.id === "castAudio" && toggle.enabled === false)
++    Connections {
++        target: root.castAudioPlugin
++        ignoreUnknownSignals: true
++        function onOpenMenuRequested() { root.visibilities.utilities = true; }
++    }
++    // END Dev Manager Cast menu adapter
 +
      readonly property var quickToggles: {
          const configToggles = Config.utilities.quickToggles || [];
          const disabledIds = new Set(configToggles.filter(t => t.enabled === false).map(t => t.id));
+@@ -46,6 +61,7 @@
+         const seenIds = new Set();
  
-         const builtIn = [
-+            {
-+                id: "castAudio"
-+            },
-             {
-                 id: "restartShell"
-             },
-@@ -50,6 +61,10 @@
+         return allToggles.filter(item => {
++            if (item.id === "castAudio") return false;
+             if (seenIds.has(item.id))
                  return false;
              seenIds.add(item.id);
- 
-+            if (item.id === "castAudio") {
-+                return root.castAudioPlugin !== null;
-+            }
+@@ -104,6 +120,16 @@
+             visible: root.needExtraRow
+             model: root.needExtraRow ? root.quickToggles.slice(root.splitIndex) : []
+         }
 +
-             if (item.id === "vpn") {
-                 return GlobalConfig.utilities.vpn.selectedProvider.length > 0;
-             }
-@@ -118,6 +133,29 @@
-             delegate: DelegateChooser {
-                 role: "id"
++        // BEGIN Dev Manager Cast menu row
++        Loader {
++            objectName: "castAudioMenuLoader"
++            Layout.fillWidth: true
++            active: root.castAudioVisible && root.castAudioPlugin !== null
++            visible: active
++            sourceComponent: active ? root.castAudioPlugin.quickToggle : null
++        }
++        // END Dev Manager Cast menu row
+     }
  
-+                DelegateChoice {
-+                    roleValue: "castAudio"
-+                    delegate: Toggle {
-+                        objectName: "castAudioQuickToggle"
-+                        readonly property string castState: root.castAudioPlugin?.snapshot?.state || "Off"
-+                        icon: castState === "Casting" ? "cast_connected" : "cast"
-+                        checked: castState === "Casting" || castState === "Connecting…"
-+                        isToggle: false
-+                        Accessible.role: Accessible.Button
-+                        Accessible.name: qsTr("Cast Audio")
-+                        Accessible.onPressAction: clicked()
-+                        Controls.ToolTip.visible: hovered
-+                        Controls.ToolTip.text: qsTr("Cast Audio") + " · " + castState
-+                        onClicked: {
-+                            root.visibilities.utilities = false;
-+                            execTimer.pendingAction = () => {
-+                                if (root.castAudioPlugin)
-+                                    root.castAudioPlugin.openPanel();
-+                            };
-+                            execTimer.restart();
-+                        }
-+                    }
-+                }
-                 DelegateChoice {
-                     roleValue: "wifi"
-                     delegate: Toggle {
+     component QuickToggleRow: ButtonRow {
 --- a/shell/modules/nexus/pages/utilities/QuickTogglesPage.qml
 +++ b/shell/modules/nexus/pages/utilities/QuickTogglesPage.qml
 @@ -11,6 +11,7 @@
