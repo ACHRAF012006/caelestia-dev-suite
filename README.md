@@ -4,8 +4,8 @@ Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE P
 
 ## Repository layout
 
-- **`caelestia-dev-manager/`** — Dev Manager 0.4.0, installer, documentation and tests.
-- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 and Cast Audio 0.2.2 are included.
+- **`caelestia-dev-manager/`** — Dev Manager 0.5.0, installer, documentation and tests.
+- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 and Cast Audio 0.3.0 are included.
 
 The manager handles installation and lifecycle. Components continue running after it closes.
 
@@ -44,7 +44,7 @@ Dev Manager's **Component Store** checks this repository automatically when it o
 
 Launch installed TouchDeck from KDE or with `touchdeck`; it does not need Dev Manager running.
 
-For [Cast Audio](components/cast-audio/README.md), update Dev Manager to **0.4.0**, then choose Component Store → Refresh → Cast Audio → Install/Update. Reviewed installation automatically adds a **separate expandable row beneath Quick Toggles**, enables new installations and restarts Caelestia KDE. Updates preserve disabled state. Expand the row and choose a receiver inline; its **Settings** button opens a separate app with output/bitrate preferences, saved device IPs and an optional fixed stream port for routed VLANs. Google-account discovery is unavailable in this Linux backend. The README includes dependency and firewall requirements. Uninstall restores the managed host originals; later host edits are preserved and block replacement.
+For [Cast Audio](components/cast-audio/README.md), update Dev Manager to **0.5.0**, then choose Component Store → Refresh → Cast Audio → Install/Update. Reviewed installation automatically adds a **separate expandable row beneath Quick Toggles**, enables new installations and restarts Caelestia KDE. Updates preserve disabled state. Expand the row and choose a receiver inline; its **Settings** button opens a separate app with output/bitrate preferences, saved device IPs and an optional fixed stream port for routed VLANs. Google-account discovery is unavailable in this Linux backend. Installation prepares private catt dependencies, known missing audio tools and portable active-UFW rules for the saved fixed port using native authentication where required. The README includes router requirements and current playback-test limitations. Uninstall restores the managed host originals; later host edits are preserved and block replacement.
 
 ## Development
 

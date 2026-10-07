@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "cast-audio",
   "name": "Cast Audio",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Cast a PipeWire output monitor to a local Google Cast receiver.",
   "type": "caelestia-plugin",
   "runtime": "quickshell",
@@ -12,23 +12,25 @@
       "quickshell",
       "python3",
       "pactl",
-      "ffmpeg",
-      "catt"
+      "ffmpeg"
     ],
-    "python": []
+    "python": [
+      "catt==0.13.3"
+    ]
   },
   "compatibility": {
     "caelestia_commit": "e34b6957fad5ce9395841b65be9e3df180ccd65c"
   },
   "permissions": [
     "Capture the selected output monitor, including all applications playing through that output, after Start or explicit reconnect opt-in.",
-    "Discover Google Cast receivers using local-network mDNS through the separately installed catt command.",
+    "Discover Google Cast receivers using local-network mDNS through the component-owned catt library.",
     "Control the selected receiver and serve unencrypted live audio on the route-selected private IPv4 interface while casting.",
     "Keep preferences and a private catt configuration under XDG_CONFIG_HOME/cast-audio and runtime locking under the component's XDG runtime/cache directory.",
     "Start and stop only the component's own helper, catt and FFmpeg processes; preserve local playback and default devices.",
-    "Integrate an expandable Cast menu into the two verified Caelestia KDE Quick Toggles host files through Dev Manager 0.4.0; installation enables this plugin and reloads the shell.",
+    "Integrate an expandable Cast menu into the two verified Caelestia KDE Quick Toggles host files through Dev Manager 0.5.0; installation enables this plugin and reloads the shell.",
     "Connect to explicitly saved private IPv4 receivers across routed VLANs; optionally listen on a configured TCP stream port while casting.",
-    "Open a separate Cast Audio Settings app using a same-user private Unix settings endpoint; no Google credentials are requested or stored."
+    "Open a separate Cast Audio Settings app using a same-user private Unix settings endpoint; no Google credentials are requested or stored.",
+    "Dev Manager prepares private Cast Python dependencies and, after installation review and native administrator authentication, missing audio tools and an active UFW firewall for the configured fixed stream port on this PC."
   ],
   "integration": {
     "target": "caelestia-quick-toggles"

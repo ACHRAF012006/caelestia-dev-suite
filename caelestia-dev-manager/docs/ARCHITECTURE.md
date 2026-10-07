@@ -66,3 +66,9 @@ Add manifest fields with strict validation, a target-specific adapter, supported
 ## Manager-owned Quick Toggles integration (0.4)
 
 `backend/host_integration.py` implements the fixed Cast Audio-only adapter. Host plans are sealed independently of payload FilePlans and stored in the same durable transaction intent. Private receipts retain verified originals and installed hashes. Generic component destinations are unchanged. See [adapter contract](QUICK_TOGGLES_INTEGRATION.md) for automatic enable/restart, edit protection and recovery.
+
+## Cast Audio machine preparation and Quickshell sidecars (0.5)
+
+`backend/system_setup.py` owns fixed audio-package and active-UFW recipes. Component source cannot specify privileged commands. UI reviews preparation before Python dependencies and payload planning; Manager rechecks the current recipe before native pkexec authentication. Only ffmpeg/pactl mappings are automatic on supported distributions; host prerequisites remain explicit. UFW rules use private source ranges, the saved fixed port and any local destination. No computer address is persisted in the recipe. Preparation is external machine state, separate from recoverable user-file transactions, and may remain after cancellation/uninstall. Inactive firewalls are preserved.
+
+Quickshell sidecars may declare Python dependencies. Prepared environments are sealed and copied into the normal component-owned `_venv`, with metadata inspection and lifecycle ownership unchanged. The component must launch its installed interpreter and use modules for console tools because copied console scripts can retain staging shebangs. Cast Audio supplies a bounded launcher for its two sidecars.

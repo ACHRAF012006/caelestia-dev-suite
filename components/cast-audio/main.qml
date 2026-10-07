@@ -50,7 +50,7 @@ Item {
     Process {
         id: helper
         // URL decoding supports installation paths containing spaces.
-        command: ["python3", "-B", decodeURIComponent(Qt.resolvedUrl("src/main.py").toString().replace(/^file:\/\//, ""))]
+        command: ["python3", "-B", decodeURIComponent(Qt.resolvedUrl("src/launcher.py").toString().replace(/^file:\/\//, "")), "main.py"]
         stdinEnabled: true
         running: true
         onStarted: root.send({action: "visible", value: root.menuIsVisible})

@@ -113,6 +113,8 @@ class Controller:
                     if (info.get("content_id") == self.stream.url and info.get("player_state") == "PLAYING"
                             and self.stream.receiver_reads > 0):
                         break
+                    if info.get("content_id") == self.stream.url and info.get("idle_reason") == "ERROR":
+                        raise Failure("Receiver rejected the audio stream. Check receiver network/media access; its Cast connection is working.")
                     await asyncio.sleep(1)
                 else:
                     raise Failure("Stream failed: receiver did not begin playback; check incoming LAN access")
@@ -128,7 +130,7 @@ class Controller:
             if (self.stream and self.stream.url and not self.stream.failure and not self.stream.receiver_reads
                     and (isinstance(exc, TimeoutError) or "timed out" in message or "did not begin playback" in message)):
                 message = (f"Speaker did not request audio from {self.stream.address}:{self.stream.port}. "
-                           "Check speaker-to-computer TCP access through the firewall/VLAN; use a fixed stream port in Settings.")
+                           "Cast control connected, but media loading failed. Check receiver media access and speaker-to-PC TCP routing.")
             await self.cleanup()
             self.status("Error", message)
 

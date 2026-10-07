@@ -116,6 +116,49 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         stream.close.assert_awaited_once()
         self.assertIsNone(controller.stream)
 
+    async def test_receiver_rejection_is_reported_without_claiming_a_firewall_cause(self):
+        controller = Controller(self.prefs, self.processes, lambda value: None)
+        stream = AsyncMock()
+        stream.url = "http://10.20.1.5:48200/private/live.mp3"
+        stream.failure = ""
+        stream.receiver_reads = 0
+        controller.cast.info = AsyncMock(side_effect=[
+            {"app_id": "CC1AD845", "player_state": "IDLE"},
+            {"app_id": "CC1AD845", "player_state": "IDLE", "content_id": stream.url, "idle_reason": "ERROR"}])
+        controller.cast.start = AsyncMock()
+        controller.cast.stop_owned = AsyncMock()
+        with patch("controller.Stream", return_value=stream), patch("controller.route", return_value="10.20.1.5"), \
+             patch("controller.audio.sources", new=AsyncMock(return_value=[{"id": "speaker", "name": "Speaker", "default": True, "monitor": "speaker.monitor"}])):
+            await controller.start({"host": "10.20.0.8", "name": "Speaker"})
+        self.assertEqual(controller.state, "Error")
+        self.assertIn("Receiver rejected", controller.message)
+        self.assertNotIn("private/live", controller.message)
+        stream.close.assert_awaited_once()
+
+    async def test_cast_module_uses_the_sidecar_interpreter_and_ignores_proxy_environment(self):
+        child = AsyncMock()
+        with patch("processes.importlib.util.find_spec", return_value=object()), \
+             patch("processes.asyncio.create_subprocess_exec", new=AsyncMock(return_value=child)) as spawn:
+            created = await self.processes.spawn(["catt", "--version"])
+        self.assertIs(created, child)
+        args = spawn.call_args.args
+        self.assertEqual(args[-3:], ("-m", "catt.cli", "--version"))
+        self.assertEqual(args[-4], sys.executable)
+        self.assertEqual(spawn.call_args.kwargs["env"]["NO_PROXY"], "*")
+        self.assertNotIn("HTTPS_PROXY", spawn.call_args.kwargs["env"])
+        self.processes.children.discard(child)
+
+    async def test_module_command_executes_without_a_global_cast_launcher(self):
+        package = Path(self.temp.name) / "catt"
+        package.mkdir()
+        (package / "__init__.py").write_text("")
+        (package / "cli.py").write_text("if __name__ == '__main__': print('catt v0.13.3')\n")
+        self.processes.environment.update(PYTHONPATH=self.temp.name, PATH="/usr/bin")
+        with patch("processes.importlib.util.find_spec", return_value=object()):
+            result = await self.processes.run(["catt", "--version"])
+        self.assertEqual(result.strip(), "catt v0.13.3")
+        self.assertFalse(self.processes.children)
+
     async def test_settings_socket_updates_preferences_and_preserves_active_cast(self):
         controller = Controller(self.prefs, self.processes, lambda value: None)
         server = SettingsServer(self.prefs, controller, controller.handle)

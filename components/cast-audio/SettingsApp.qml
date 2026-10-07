@@ -37,7 +37,7 @@ ShellRoot {
     }
     Process {
         id: bridge
-        command: ["python3", "-B", decodeURIComponent(Qt.resolvedUrl("src/settings_client.py").toString().replace(/^file:\/\//, ""))]
+        command: ["python3", "-B", decodeURIComponent(Qt.resolvedUrl("src/launcher.py").toString().replace(/^file:\/\//, "")), "settings_client.py"]
         stdinEnabled: true
         running: true
         onStarted: root.send({action: "get"})
@@ -124,7 +124,7 @@ ShellRoot {
                         CastText { text: qsTr("Audio stream TCP port") }
                         Controls.SpinBox { id: streamPort; from: 0; to: 65535; editable: true; onValueModified: root.markDirty() }
                     }
-                    CastText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: qsTr("0 selects an available port. Use a fixed port from 1024–65535 when your VLAN firewall needs one predictable incoming port.") }
+                    CastText { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: qsTr("48200 is the default. Dev Manager prepares an active UFW firewall for your saved fixed port during installation. After changing ports, run Install/Update again to prepare the new rule. 0 selects an available port and needs manual firewall setup. Router VLAN rules are configured separately.") }
                     ActionButton { text: qsTr("Save settings"); enabled: root.dirty; onClicked: { root.save(); } }
                 }
                 CastText { text: qsTr("Google account"); font.pixelSize: 18 }

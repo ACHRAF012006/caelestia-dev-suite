@@ -32,7 +32,7 @@ The optional icon must actually exist. Omit it to use the desktop development ic
 | runtime | python, python-pyside6, shell, qml, quickshell, none (draft) |
 | entrypoint | Safe source-relative file, required to install |
 | args | Optional array of literal command arguments; no shell interpolation |
-| dependencies.system | Executable names checked on PATH. User installs missing system packages manually. |
+| dependencies.system | Executable names checked on PATH. Fixed Cast Audio recipes can prepare ffmpeg/pactl after review; other missing tools need explicit setup. |
 | dependencies.python | Package names with optional simple version comparator; no URLs, flags or hooks |
 | desktop | Optional terminal boolean, semicolon-separated categories, safe source-relative SVG icon, createShortcut boolean, startupNotify boolean |
 | service.restart | no, on-failure, always; defaults to no |
@@ -41,7 +41,7 @@ The optional icon must actually exist. Omit it to use the desktop development ic
 | integration.target | qml-component requires caelestia-plugin; Cast Audio quickshell plugins may declare caelestia-quick-toggles for the manager-owned adapter |
 | permissions | Descriptive string list shown during review; this is disclosure, not a security sandbox |
 
-Python/PySide6, standalone QML (`qml6`) and shell runtimes work for apps/commands/services. Caelestia integration requires quickshell. `python-pyside6` must declare a PySide6 Python dependency. `none` creates drafts. General KDE integration is reserved and cannot install in v0.1. Python dependencies require a Python runtime.
+Python/PySide6, standalone QML (`qml6`) and shell runtimes work for apps/commands/services. Caelestia integration requires quickshell. `python-pyside6` must declare a PySide6 Python dependency. `none` creates drafts. General KDE integration is reserved and cannot install in v0.1. Python dependencies support Python runtimes and Quickshell Python sidecars. Sidecars must explicitly use installed `_venv/bin/python`; launch module entrypoints instead of relocated console scripts.
 
 ## Optional desktop shortcut
 

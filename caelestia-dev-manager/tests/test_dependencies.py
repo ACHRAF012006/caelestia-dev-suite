@@ -201,3 +201,37 @@ def test_failed_preparation_is_retained_after_reopen_and_venv_link_retry(manager
     manager.prepare_dependencies(m["id"])
     assert not (target / "lib64").is_symlink()
     assert reopened.dependency_status(m["id"])["development"]["ready"]
+
+
+def test_quickshell_sidecar_dependencies_are_installed_owned_and_independent(manager, monkeypatch):
+    environment = {"plugin_supported": True}
+    monkeypatch.setattr("backend.manager.detect", lambda paths: environment)
+    manager.environment = environment
+    m, files = template("Helper Plugin", "helper-plugin", "Empty Caelestia Plugin")
+    m["dependencies"] = {"python": ["demo>=2"], "system": []}
+    files["manifest.json"] = json.dumps(m)
+    manager.create(files)
+    target = manager.prepared_path(m)
+    def run(command, **kwargs):
+        if "venv" in command:
+            (target / "bin").mkdir(parents=True)
+            (target / "bin/python").write_text("private interpreter")
+        else:
+            metadata(target, "demo", "2")
+            (target / "lib/python3.14/site-packages/demo.py").write_text("value = 2\n")
+        return subprocess.CompletedProcess(command, 0)
+    monkeypatch.setattr("backend.manager.subprocess.run", run)
+    with pytest.raises(SafetyError, match="Prepare Python dependencies"):
+        manager.plan_install(m["id"])
+    manager.prepare_dependencies(m["id"])
+    plan = manager.plan_install(m["id"])
+    manager.install(m["id"], expected=plan)
+    root = manager.paths.root(m)
+    assert (root / "_venv/bin/python").is_file()
+    assert manager.dependency_status(m["id"])["installed"]["ready"]
+    assert str(root / "_venv/bin/python") in {f["path"] for f in manager.registry.files(m["id"])}
+    # Runtime libraries belong to the installed snapshot, not staging or manager.
+    (target / "lib/python3.14/site-packages/demo.py").unlink()
+    assert (root / "_venv/lib/python3.14/site-packages/demo.py").read_text() == "value = 2\n"
+    manager.uninstall(m["id"])
+    assert not (root / "_venv/bin/python").exists()

@@ -566,6 +566,11 @@ class Window(QMainWindow):
         if not self.current_id: raise SafetyError("Select a component")
         r = self.manager.registry.get(self.current_id)
         m = manifest_parse(self.manager.read_source(self.current_id)["manifest.json"])
+        setup = self.manager.plan_system_setup(self.current_id)
+        if setup["commands"]:
+            if not self.confirm("Prepare this PC for Cast Audio", setup["summary"], "Prepare PC"): return False
+            self.notify("Preparing this PC…"); QApplication.processEvents()
+            self.manager.prepare_system(self.current_id, expected=setup)
         deps = m.get("dependencies", {}).get("python", [])
         if deps and not self.manager.dependencies_prepared(m):
             if not self.confirm("Download required libraries", m["name"] + " needs these Python libraries:\n\n" + "\n".join(deps) + "\n\nThey will be downloaded into this component's private environment. No system packages will be changed. This may take a few minutes.", "Download Libraries"): return False
@@ -583,7 +588,7 @@ class Window(QMainWindow):
                 executables = "\n\n".join(str(x.path) + "\n" + x.data.decode() for x in plan["files"] if (x.mode & 0o111 or x.path.suffix == ".service") and x.data is not None)
                 text = (f"{m['name']} {m['version']}\n\n" + plan["preview"] + "\n\nEXECUTABLE LAUNCHERS\n" + executables +
                     "\n\nREQUESTED PERMISSIONS\n" + json.dumps(m.get("permissions", [])) + "\n\nDEPENDENCIES\n" + json.dumps(m.get("dependencies", {})) +
-                    "\n\n" + "\n".join(plan["warnings"]) + "\n\nNo system files will be modified. Existing owned files are backed up.\nReview component source before launching or enabling.")
+                    "\n\n" + "\n".join(plan["warnings"]) + "\n\nThis payload step writes user files. Any reviewed PC preparation is separate. Existing owned files are backed up.\nReview component source before launching or enabling.")
                 options.summary_text = (m["name"] + " " + m["version"] + "\n\n" + m.get("description", "") +
                     "\n\nInstall location\n" + str(self.manager.paths.root(m)) +
                     "\n\nPermissions\n" + ("\n".join("• " + p for p in m.get("permissions", [])) or "No additional permissions declared.") +

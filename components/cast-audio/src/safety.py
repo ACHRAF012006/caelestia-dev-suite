@@ -50,7 +50,7 @@ def private_dir(path):
 
 class Preferences:
     defaults = {"source": "default", "bitrate": 192, "remember": True,
-                "reconnect": False, "last": "", "discovery_timeout": 45, "manual_devices": [], "stream_port": 0}
+                "reconnect": False, "last": "", "discovery_timeout": 45, "manual_devices": [], "stream_port": 48200}
 
     def __init__(self):
         home = Path.home()

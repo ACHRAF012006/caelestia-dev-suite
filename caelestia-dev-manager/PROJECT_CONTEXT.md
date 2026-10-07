@@ -1,6 +1,6 @@
 # Project context
 
-Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.4.0. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
+Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.5.0. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
 
 Read README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md (alias to COMPONENT_SPEC), docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md, docs/CODEX_WORKFLOW.md and docs/COMPONENT_STORE.md before changing component behavior.
 
@@ -8,7 +8,7 @@ The manager administers existence and lifecycle; it is never the runtime contain
 
 Caelestia facts are documented in docs/ENVIRONMENT_FINDINGS.md. Inspect current installed files and refresh the reference before adding integration methods. Never treat a guessed dashboard/plugin API as supported. Never write custom applications into the reference clone.
 
-Architecture constraints: strict component manifest; path traversal and symlink rejection; fixed per-type destination roots; SQLite exact file ownership; static import/validation; collision refusal; backup plus recoverable transaction journal; no arbitrary install scripts; no sudo; reviewed virtual environments for Python dependencies; independent launchers; `systemd --user` for service lifetimes.
+Architecture constraints: strict component manifest; path traversal and symlink rejection; fixed per-type destination roots; SQLite exact file ownership; static import/validation; collision refusal; backup plus recoverable transaction journal; no arbitrary install scripts; no arbitrary privileged hooks; reviewed fixed Cast Audio machine preparation via pkexec; reviewed virtual environments for Python and Quickshell sidecar dependencies; independent launchers; `systemd --user` for service lifetimes.
 
 Components created by Codex should go into `plugins/<component-id>/`. Copy/paste responses use `CAELESTIA_DEV_PACKAGE`. Type-specific adapters determine capabilities. `kde-integration` is reserved and fails installation until a verified adapter exists. `qml-component` supports only a Caelestia-plugin target in v0.1.
 
@@ -23,3 +23,5 @@ The manager uses `app/assets/icon.svg`, a bundled SVG with fixed colors, for its
 The GitHub suite separates `caelestia-dev-manager/` (manager, installer and docs) from `components/<id>/` (published component source). The Component Store uses the built-in suite/main catalogue without repository fields. It fetches Git objects on startup in a background worker; it never checks out or executes catalogue code. One Install/Update/Open button downloads inert local source and proceeds into existing dependency and installation reviews. Summaries are readable with full source/exact plans available as technical details; there is no Code tab. Cancelling may retain downloaded development source but never changes installed files. Previous version selects a differing installed backup and preserves current source, store provenance and runtime configuration. Protect local edits, pin downloads to a commit and retain previous source in XDG data source-backups. Never pull catalogue changes directly into installed runtimes. See docs/COMPONENT_STORE.md.
 
 Cast Audio 0.2 declares integration.target=caelestia-quick-toggles. The manager owns a checksum-pinned two-file adapter with separate host receipts and transaction recovery. New installs enable it and restart the shell; updates preserve disabled state; uninstall restores original host files. Never execute component-supplied patches or generalize this into arbitrary host writes. Read docs/QUICK_TOGGLES_INTEGRATION.md.
+
+Manager 0.5 supports private Python environments for Quickshell sidecars. Cast Audio 0.3 uses installed _venv/bin/python via src/launcher.py and invokes catt.cli as a module to avoid staging shebangs. Installation reviews fixed ffmpeg/pactl package mappings and portable active-UFW rules through native authentication; no component can supply privileged commands. Select the current PC address by receiver route, never hardcode development IPs. Do not claim audio works from a Cast connection sound or LOAD acknowledgement: verify receiver bytes and PLAYING.

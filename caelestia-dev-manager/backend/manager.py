@@ -18,7 +18,7 @@ from backend.backups import Backups, now
 from backend.runtime import Runtime
 from backend.desktop import SHORTCUT_TYPES, ShortcutConflict, desktop_directory, shortcut_filename, shortcut_descriptor
 from backend.dependencies import DependencyError, clean_output, failure_report, python_version, report as dependency_report
-from backend import host_integration
+from backend import host_integration, system_setup
 
 def locked(method):
     @functools.wraps(method)
@@ -284,6 +284,18 @@ class Manager:
         result = dependency_report(m, target, target.parent / "prepared.json")
         return not result["inspection_error"] and all(x["status"] == "prepared" for x in result["python"]) and (not result["python"] or (target / "bin/python").is_file())
 
+    def plan_system_setup(self, id):
+        manifest = manifest_parse(self.read_source(id)["manifest.json"])
+        if manifest["id"] != id: raise SafetyError("Manifest ID changed")
+        return system_setup.plan(manifest, self.paths)
+
+    @locked
+    def prepare_system(self, id, expected):
+        self.ready()
+        if not self.runtime.real: raise SafetyError("System setup cannot run in sandbox mode")
+        system_setup.apply(self.plan_system_setup(id), expected)
+        with self.registry.db: self.registry.log(id, "Prepared Cast Audio host packages/firewall through native authentication")
+
     @locked
     def prepare_dependencies(self, id):
         self.ready()
@@ -292,7 +304,7 @@ class Manager:
         if m["id"] != id: raise SafetyError("Manifest ID changed")
         deps = m.get("dependencies", {}).get("python", [])
         if not deps: raise SafetyError("No project-local Python dependencies declared")
-        if m["runtime"] not in {"python", "python-pyside6"}: raise SafetyError("Python dependencies require a Python runtime")
+        if m["runtime"] not in {"python", "python-pyside6", "quickshell"}: raise SafetyError("Python dependencies require Python or a Quickshell sidecar")
         target = no_symlinks(self.prepared_path(m))
         marker = no_symlinks(target.parent / "prepared.json")
         failure = no_symlinks(target.parent / "dependency-error.json")
@@ -343,7 +355,7 @@ class Manager:
             raise SafetyError(f"Existing unowned component directory: {payload}")
         dependencies = None
         if m.get("dependencies", {}).get("python"):
-            if m["runtime"] not in {"python", "python-pyside6"}: raise SafetyError("Python dependencies require a Python runtime")
+            if m["runtime"] not in {"python", "python-pyside6", "quickshell"}: raise SafetyError("Python dependencies require Python or a Quickshell sidecar")
             dependencies = self.prepared_path(m)
             if not self.dependencies_prepared(m): raise SafetyError("Prepare Python dependencies before installation; this is a separate reviewed network operation. Open Dependencies for missing packages or version mismatches.")
         entries = installer(self.paths, m).plan_install(m, files, dependencies)

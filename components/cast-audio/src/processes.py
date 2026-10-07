@@ -1,5 +1,6 @@
 """Bounded asynchronous commands and cancellation of exact owned children."""
 import asyncio
+import importlib.util
 import os
 from pathlib import Path
 import shutil
@@ -20,6 +21,11 @@ class Processes:
         self.environment.update(NO_PROXY="*", no_proxy="*")
 
     async def spawn(self, args, capture=False):
+        cast_command = args[0] == "catt"
+        # Installed console scripts retain staging shebangs; invoke the module
+        # with this sidecar's relocated environment instead.
+        if cast_command and importlib.util.find_spec("catt") is not None:
+            args = [sys.executable, "-m", "catt.cli", *args[1:]]
         executable = shutil.which(args[0])
         if executable is None:
             raise Failure(args[0] + " unavailable; install this declared dependency manually")
@@ -28,7 +34,7 @@ class Processes:
             str(os.getpid()), executable, *args[1:],
             stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL if capture else asyncio.subprocess.PIPE,
-            env=self.environment if args[0] == "catt" else None, limit=65536))
+            env=self.environment if cast_command else None, limit=65536))
         try:
             process = await asyncio.shield(pending)
         except asyncio.CancelledError:
