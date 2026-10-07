@@ -1,4 +1,4 @@
-# Optional Quick Toggles integration — review only
+# Cast icon in Caelestia KDE Quick Toggles
 
 `quick-toggles.patch` is inert text. Neither Dev Manager nor this plugin applies it. Installation of the plugin never writes to the production shell.
 
@@ -25,13 +25,24 @@ The [toggle implementation](https://github.com/ladybug-me/caelestia-kde/blob/e34
 
 The patch changes two upstream source files:
 
-1. `shell/modules/utilities/cards/Toggles.qml`: reads the existing internal `PluginLoader.pluginInstances["cast-audio"]`, observes `loadedCount`, and adds a full-width Loader beneath the existing toggle rows. Its source is this plugin's declared `quickToggle` Component. It excludes the new `castAudio` config ID from the fixed icon delegate list and honors its enabled flag.
+1. `shell/modules/utilities/cards/Toggles.qml`: reads the existing internal `PluginLoader.pluginInstances["cast-audio"]`, observes `loadedCount`, and adds `castAudio` to the built-in model and native icon delegates. It uses the shell's own IconButton styling, displays `cast` / `cast_connected`, highlights while connecting/casting, and opens the plugin's controls after closing the utilities drawer. It honors the configured visibility flag, deduplicates custom entries and removes the icon when the plugin is absent.
 2. `shell/modules/nexus/pages/utilities/QuickTogglesPage.qml`: adds `castAudio` to Connectivity so the user can hide/show the added control.
 
-The resulting control shows the Cast SVG, title and state. Its arrow opens the plugin's selector window; its main area opens the selector when off or stops when casting/connecting. No Cast backend is added to the shell. When the plugin is absent/unloaded, the Loader is inactive. The existing plugin loader is not patched.
+The resulting control is an icon alongside Wi-Fi, Bluetooth and the other Quick Toggles. Its tooltip says Cast Audio and the current state. Clicking always opens the receiver window; Stop casting remains in that window. No Cast backend is added to the shell. The existing plugin loader is not patched.
 
 This is a proposed bridge to an internal loader map, not a supported public API. A future upstream plugin registration interface would be preferable. Upstream changes may invalidate the patch; it is deliberately pinned to the inspected commit.
 
 For review, use a separate clean checkout at the pinned commit and run `git apply --check /absolute/path/to/cast-audio/patches/quick-toggles.patch`. Apply only in that reviewed checkout when desired, inspect the diff and test/build the host through its own documented workflow. The patch paths refer to the upstream repository's `shell/` directory, not the installed root. Reverting the two-file patch removes the placement; the plugin's window/IPC continue to work.
 
 The host patch is outside component installation ownership. Keep its review, deployment, backup and reversal separate. The component does not provide an installer hook or a command that patches the live installation. Reloading any changed shell remains an explicit user action: `systemctl --user restart caelestia-shell.service`.
+
+## Deployment on an installed Caelestia KDE shell
+
+Verify the installed commit matches the reference above and inspect both files for local edits. Back up these two exact installed files before applying changes:
+
+- `modules/utilities/cards/Toggles.qml`
+- `modules/nexus/pages/utilities/QuickTogglesPage.qml`
+
+For this patch, `git apply -p2 --check /absolute/path/to/quick-toggles.patch` from the installed shell root checks paths without changing files. Apply the reviewed patch there using `git apply -p2 /absolute/path/to/quick-toggles.patch`, then explicitly restart `caelestia-shell.service`. The `-p2` removes the repository-only `a/shell/` prefix. Enable Cast Audio in Dev Manager and Nexus; Nexus → Utilities → Quick toggles → Connectivity controls icon visibility. No shell.json edits are required for default visibility.
+
+To reverse, first check `git apply -p2 --reverse --check /absolute/path/to/quick-toggles.patch`, then apply with `--reverse` and restart the shell. If either file changed since deployment, inspect the diff before restoring the saved copy. Shell upgrades can replace this host integration; recheck compatibility before reapplying. Run `python3 -B tests/quick_toggle_probe.py --shell /path/to/installed/caelestia` from the component to verify it in an isolated copy.

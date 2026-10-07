@@ -7,7 +7,7 @@ Item {
     id: root
     property var snapshot: ({state: "Off", message: "Starting helper…", devices: [], sources: [], settings: {}})
     property bool restarting: false
-    // Component-owned interface consumed only by the optional reviewed host patch.
+    // Legacy card interface; the native Quick Toggle bridge uses openPanel/snapshot.
     property Component quickToggle: Component { CastToggle { controller: root } }
 
     function send(message) {
@@ -66,7 +66,7 @@ Item {
     CastWindow {
         id: panel
         controller: root
-        visible: true
+        visible: false
         onVisibleChanged: root.send({action: "visible", value: visible})
     }
     // A supported generic Quickshell IPC handler, provided by this plugin itself.

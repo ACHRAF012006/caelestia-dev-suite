@@ -1,4 +1,4 @@
-# Cast Audio 0.1.0
+# Cast Audio 0.1.1
 
 A Caelestia plugin that casts the selected PipeWire output monitor to a local Google Cast receiver. All applications playing through that output are included. Other outputs are not mixed together. Microphones are excluded. Local playback stays enabled; default devices and volume routing are never changed.
 
@@ -8,7 +8,7 @@ Inspected the installed `$XDG_CONFIG_HOME/quickshell/caelestia` against commit `
 
 Quick Toggles are a fixed `DelegateChooser` in `shell/modules/utilities/cards/Toggles.qml`. `Config.utilities.quickToggles` configures IDs/enabled state, but does not register new delegates. Nexus's `QuickTogglesPage.qml` also lists fixed IDs. The plugin loader creates a plugin's `main.qml` beneath `PluginLoader`; it exposes no Quick Toggle registration method.
 
-This package therefore uses the supported `caelestia-plugin` loader and opens its own Caelestia-styled Cast control window. It does not automatically appear inside Quick Toggles. `patches/quick-toggles.patch` is an optional, unapplied host modification that adds that placement and its Nexus visibility setting. No live shell files or installed plugin directories were changed during development. The plugin's `quickToggle` property is its own component interface for that proposed patch, not an existing Caelestia API.
+This package uses the supported `caelestia-plugin` loader and provides a Caelestia-styled Cast control window. `patches/quick-toggles.patch` adds a native Cast icon to Caelestia KDE's existing Quick Toggles rows and a Cast Audio visibility setting in Nexus. Clicking the icon opens the receiver controls; it highlights while connecting/casting. The icon disappears when the plugin is unloaded or disabled. This is an explicit two-file host modification, not an upstream registration API. Installing from the store alone never applies the host patch; see [deployment and rollback](patches/README.md). The window stays closed at startup until opened through the icon or IPC.
 
 External plugin files could not resolve `qs.*` imports in the inspected Quickshell 0.3.1 runtime. The UI uses the verified installed `Caelestia.Config.Tokens` and `Caelestia.Services.PaletteManager.tPalette` exports, standard Qt Quick controls, and Quickshell windows/processes/IPC. The bundled monochrome SVG is tinted from the palette without requiring a GPU shader.
 
@@ -58,10 +58,10 @@ Use trusted, non-symlinked XDG paths. The environment must remain at that path b
 1. Open Dev Manager → **Component Store** → **Refresh**, select **Cast Audio**, then choose **Install**. Review the source and permissions. Alternatively, paste the complete package into Create / Import, analyze it and create development source before installing through Components.
 2. Resolve any missing dependencies. Review Install to create the separate installed snapshot. The manager initially hides its discovery metadata.
 3. Enable the component. If Nexus separately disabled it, enable it there too. Reload explicitly with `systemctl --user restart caelestia-shell.service`.
-4. Put the computer and Google Cast receiver on the same local network. The Cast Audio window opens. Wait for discovery (or press **Refresh devices**), then click the receiver's name to start. The first connection may take up to a minute. A busy receiver is refused; stop its existing session through its current controller first.
+4. Put the computer and Google Cast receiver on the same local network. Open **Quick Toggles → Cast Audio** if the host bridge is deployed, or run `quickshell -c caelestia ipc call castAudio open`. Wait for discovery (or press **Refresh devices**), then click the receiver's name to start. The first connection may take up to a minute. A busy receiver is refused; stop its existing session through its current controller first.
 5. Stop casting ends capture and closes the server immediately, then attempts to stop the matching receiver session. Closing the window keeps casting.
 
-Reopen the window using `quickshell -c caelestia ipc call castAudio open`. The plugin also supplies `castAudio toggle` and `castAudio stop` IPC functions. These are plugin-defined handlers using standard Quickshell IPC. With the optional host patch, tapping Cast Audio opens the selector while disconnected, or stops the active/pending cast; the arrow always opens the selector.
+Reopen the window using the Quick Toggles Cast icon or `quickshell -c caelestia ipc call castAudio open`. The host icon always opens the selector, including while casting; use **Stop casting** in the selector to stop. The plugin also supplies `castAudio toggle` and `castAudio stop` IPC functions. These are plugin-defined handlers using standard Quickshell IPC. Nexus → Utilities → Quick toggles → Connectivity → Cast Audio hides/shows the icon.
 
 If the window does not appear, check that Cast Audio is enabled in Components (and not disabled in Nexus), restart the shell explicitly, then run the open command above. If no receiver appears, check that it is powered on and on the same LAN; try Refresh devices. Guest Wi-Fi/client isolation can block discovery or streaming. See Audio and network behavior below for firewall and receiver limits.
 
@@ -91,7 +91,7 @@ Preferences: `$XDG_CONFIG_HOME/cast-audio/settings.json`, mode 0600. The compone
 
 ## Verification
 
-Run from this development component: `python3 -B -m unittest discover -s tests -v`.
+Run from this development component: `python3 -B -m unittest discover -s tests -v`. To test the host icon on a compatible Caelestia KDE Wayland desktop, run `python3 -B tests/quick_toggle_probe.py --shell "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/caelestia"`. The probe copies the host, applies the patch only to that temporary copy when needed, isolates XDG roots/session bus and uses a fake Cast controller; it neither captures audio nor edits the live shell. It checks the actual native icon, click handler, casting highlight, Nexus visibility and plugin unload.
 
 Tests cover settings recovery, input/address validation, monitor-only selection, busy/replaced-session protection, timeout/cancellation cleanup, stream failure cleanup and the HTTP boundary. An isolated real FFmpeg synthetic-tone test verified live MP3 bytes, HTTP streaming and `catt` 0.13.3/yt-dlp retaining the live URL and audio MIME. The QML was instantiated using installed Quickshell/native Caelestia modules under temporary XDG roots, without network audio capture. The optional patch passes `git apply --check` against the pinned source. No physical Google Cast receiver playback or receiver-specific latency was tested.
 

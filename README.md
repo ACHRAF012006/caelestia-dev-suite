@@ -5,7 +5,7 @@ Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE P
 ## Repository layout
 
 - **`caelestia-dev-manager/`** — Dev Manager 0.3.2, installer, documentation and tests.
-- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 and Cast Audio 0.1.0 are included.
+- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 and Cast Audio 0.1.1 are included.
 
 The manager handles installation and lifecycle. Components continue running after it closes.
 
@@ -44,7 +44,7 @@ Dev Manager's **Component Store** checks this repository automatically when it o
 
 Launch installed TouchDeck from KDE or with `touchdeck`; it does not need Dev Manager running.
 
-For [Cast Audio](components/cast-audio/README.md), choose Component Store → Refresh → Cast Audio → Install, enable it in Components, then explicitly restart `caelestia-shell.service`. Open its controls with `quickshell -c caelestia ipc call castAudio open`; click a discovered receiver to cast your output audio. The component README includes dependency setup and network requirements. It opens its own window; Quick Toggles placement requires the separately reviewed optional host patch.
+For [Cast Audio](components/cast-audio/README.md), choose Component Store → Refresh → Cast Audio → Install, enable it in Components, then explicitly restart `caelestia-shell.service`. Open its controls with `quickshell -c caelestia ipc call castAudio open`; click a discovered receiver to cast your output audio. The component README includes dependency setup and network requirements. Its controls stay closed until opened. The optional two-file Caelestia KDE host patch adds a native Cast icon beside Wi-Fi/Bluetooth in Quick Toggles, with a Nexus visibility setting; see the component README for deployment and rollback.
 
 ## Development
 
