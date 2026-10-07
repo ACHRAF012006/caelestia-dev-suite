@@ -1,6 +1,6 @@
-# Cast Audio 0.2.0
+# Cast Audio 0.2.1
 
-Cast the selected PipeWire output monitor to a Google Cast receiver from a **separate expandable row below Caelestia KDE Quick Toggles**. Click its arrow, then choose a receiver inline. The Settings button opens a separate settings application. Microphones are excluded; local playback and default audio routing are preserved.
+Cast the selected PipeWire output monitor to a Google Cast receiver from a **separate expandable row below Caelestia KDE Quick Toggles**. Click its arrow to smoothly expand or collapse the receiver list, then choose a receiver inline. The Settings button opens a separate settings application. Microphones are excluded; local playback and default audio routing are preserved.
 
 ## Installation and panel integration
 
