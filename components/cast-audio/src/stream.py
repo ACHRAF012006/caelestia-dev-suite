@@ -27,6 +27,7 @@ class Stream:
         try:
             self.server = await asyncio.start_server(self.serve, self.address, self.port, limit=16384)
             port = self.server.sockets[0].getsockname()[1]
+            self.port = port
             self.url = f"http://{self.address}:{port}{self.path}"
             self.encoder = await self.processes.spawn([
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",

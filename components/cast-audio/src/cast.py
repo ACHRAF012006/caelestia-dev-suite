@@ -71,7 +71,7 @@ class Cast:
         return await self.processes.run(["catt", "--device", local_ip(receiver["host"]), *args], timeout)
 
     async def info(self, receiver):
-        info = decode(await self.command(receiver, "info", "--json-output"))
+        info = decode(await self.command(receiver, "info", "--json-output", timeout=25))
         if not info or "app_id" not in info:
             raise Failure("Speaker unreachable or status unavailable")
         return info

@@ -45,12 +45,13 @@ class Controller:
 
     async def discover(self):
         self.scanning = True
+        sources_ready = False
         self.publish()
         try:
             self.sources = await audio.sources(self.processes)
+            sources_ready = True
             self.devices = merge_devices(await self.cast.scan(self.prefs.values["discovery_timeout"]), self.prefs.values["manual_devices"])
-            if self.state in ("Off", "Error"):
-                self.state = "Off"
+            if self.state == "Off":
                 self.message = "Choose a receiver" if self.devices else "No Cast devices found; check mDNS, firewall and Wi-Fi isolation"
             if self.auto_pending:
                 self.auto_pending = False
@@ -61,10 +62,11 @@ class Controller:
             raise
         except Exception as exc:
             self.devices = merge_devices([], self.prefs.values["manual_devices"])
-            if self.state in ("Off", "Error"):
-                self.state, self.message = "Error", self.error(exc)
-                if self.devices:
-                    self.message += "; saved IP receivers are still available"
+            if self.state == "Off":
+                if self.devices and sources_ready:
+                    self.message = "Local discovery unavailable; choose a saved IP receiver"
+                else:
+                    self.state, self.message = "Error", self.error(exc)
         finally:
             self.scanning = False
             self.publish()
@@ -122,8 +124,13 @@ class Controller:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            message = self.error(exc)
+            if (self.stream and self.stream.url and not self.stream.failure and not self.stream.receiver_reads
+                    and (isinstance(exc, TimeoutError) or "timed out" in message or "did not begin playback" in message)):
+                message = (f"Speaker did not request audio from {self.stream.address}:{self.stream.port}. "
+                           "Check speaker-to-computer TCP access through the firewall/VLAN; use a fixed stream port in Settings.")
             await self.cleanup()
-            self.status("Error", self.error(exc))
+            self.status("Error", message)
 
     def update_volume(self, info):
         value = info.get("volume_level", 0)

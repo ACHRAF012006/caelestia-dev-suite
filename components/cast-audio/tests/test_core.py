@@ -70,6 +70,52 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         await controller.operation
         controller.start.assert_awaited_once()
 
+    async def test_discovery_does_not_hide_playback_failure(self):
+        self.prefs.save({"manual_devices": [{"name": "Speaker", "host": "10.20.0.8"}]})
+        controller = Controller(self.prefs, self.processes, lambda value: None)
+        controller.state = "Error"
+        controller.message = "Speaker did not request audio from 10.20.1.5:48200"
+        controller.cast.scan = AsyncMock(side_effect=Failure("mDNS unavailable"))
+        with patch("controller.audio.sources", new=AsyncMock(return_value=[])):
+            await controller.discover()
+        self.assertEqual(controller.state, "Error")
+        self.assertIn("48200", controller.message)
+        self.assertEqual(controller.devices[0]["host"], "10.20.0.8")
+        controller.cast.scan = AsyncMock(return_value=[])
+        with patch("controller.audio.sources", new=AsyncMock(return_value=[])):
+            await controller.discover()
+        self.assertEqual(controller.state, "Error")
+        self.assertIn("48200", controller.message)
+
+    async def test_manual_receiver_discovery_failure_is_only_a_notice(self):
+        self.prefs.save({"manual_devices": [{"name": "Speaker", "host": "10.20.0.8"}]})
+        controller = Controller(self.prefs, self.processes, lambda value: None)
+        controller.cast.scan = AsyncMock(side_effect=Failure("mDNS unavailable"))
+        with patch("controller.audio.sources", new=AsyncMock(return_value=[])):
+            await controller.discover()
+        self.assertEqual(controller.state, "Off")
+        self.assertIn("saved IP", controller.message)
+
+    async def test_playback_timeout_reports_actual_return_port_and_closes_capture(self):
+        controller = Controller(self.prefs, self.processes, lambda value: None)
+        stream = AsyncMock()
+        stream.url = "http://10.20.1.5:48200/private-session/live.mp3"
+        stream.address = "10.20.1.5"
+        stream.port = 48200
+        stream.failure = ""
+        stream.receiver_reads = 0
+        controller.cast.info = AsyncMock(return_value={"app_id": "CC1AD845", "player_state": "IDLE"})
+        controller.cast.start = AsyncMock(side_effect=Failure("catt timed out"))
+        controller.cast.stop_owned = AsyncMock()
+        with patch("controller.Stream", return_value=stream), patch("controller.route", return_value=stream.address), \
+             patch("controller.audio.sources", new=AsyncMock(return_value=[{"id": "speaker", "name": "Speaker", "default": True, "monitor": "speaker.monitor"}])):
+            await controller.start({"host": "10.20.0.8", "name": "Speaker"})
+        self.assertEqual(controller.state, "Error")
+        self.assertIn("10.20.1.5:48200", controller.message)
+        self.assertNotIn("private-session", controller.message)
+        stream.close.assert_awaited_once()
+        self.assertIsNone(controller.stream)
+
     async def test_settings_socket_updates_preferences_and_preserves_active_cast(self):
         controller = Controller(self.prefs, self.processes, lambda value: None)
         server = SettingsServer(self.prefs, controller, controller.handle)

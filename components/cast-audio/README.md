@@ -1,4 +1,4 @@
-# Cast Audio 0.2.1
+# Cast Audio 0.2.2
 
 Cast the selected PipeWire output monitor to a Google Cast receiver from a **separate expandable row below Caelestia KDE Quick Toggles**. Click its arrow to smoothly expand or collapse the receiver list, then choose a receiver inline. The Settings button opens a separate settings application. Microphones are excluded; local playback and default audio routing are preserved.
 
@@ -69,6 +69,20 @@ Manual IPs bypass multicast discovery, but still require routing and firewall ac
 
 **Google account connection is not implemented.** There is no supported account-discovery API in the Linux backend used here. Settings explains this and links to the official [Google Home APIs](https://developers.home.google.com/apis), which document Android/iOS SDKs. Account sign-in does not establish VLAN connectivity. No Google credentials are requested or stored.
 
+## Connection sound without playback
+
+The connection sound confirms the control connection; the receiver must separately fetch the HTTP audio stream from your computer. Release 0.2.2 reports the actual listening address/port if playback times out without a receiver request. Discovery refreshes preserve that playback error instead of replacing it with an mDNS warning. Saved receivers remain selectable when local discovery fails. Cast status queries allow up to 25 seconds for slower receivers.
+
+Pick an unused fixed stream port such as **48200** in Settings and save while stopped. On a UFW desktop, review and run a narrow rule for your own addresses, for example:
+
+```bash
+sudo ufw allow in proto tcp from 192.168.20.10 to 192.168.10.5 port 48200 comment 'Cast Audio receiver'
+```
+
+Replace the example source with the speaker IP and destination with the listening computer IP. This requires administrator authentication; the component never runs it. If the devices are on different VLANs, the router must also allow that **speaker → computer TCP port** connection, including reply traffic. Merely allowing computer → speaker TCP 8009 does not carry the audio stream. Do not disable the firewall or open an entire port range. Port 3000 may already belong to a development server; never stop another application just to free a Cast port.
+
+A live test on a Xiaomi speaker accepted the Cast LOAD command, but no audio HTTP connection arrived across its VLAN. Physical playback therefore remains unverified until the return path is permitted. No router or firewall settings were changed by the test.
+
 ## Audio and network behavior
 
 `PipeWire output monitor → FFmpeg → memory-only live MP3 HTTP stream → catt/PyChromecast → Google Cast default media receiver`.
@@ -93,7 +107,7 @@ Preferences: `$XDG_CONFIG_HOME/cast-audio/settings.json`, mode 0600. The compone
 
 ## Verification
 
-Run `python3 -B -m unittest discover -s tests -v` from this component. Sixteen tests cover monitor-only capture, private-IP/settings validation, saved receivers despite discovery failure, busy/replaced-session protection, cancellation, stream boundaries, fixed-port collision and private settings IPC.
+Run `python3 -B -m unittest discover -s tests -v` from this component. Nineteen tests cover monitor-only capture, private-IP/settings validation, saved receivers despite discovery failure, busy/replaced-session protection, cancellation, stream boundaries, fixed-port collision and private settings IPC.
 
 On a compatible Caelestia KDE Wayland desktop, run `python3 -B tests/quick_toggle_probe.py --shell "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/caelestia"`. The isolated native QML probe copies the host, uses temporary XDG paths and a fake controller, and verifies the separate row, expand/collapse, inline receiver selection, Settings action, Utilities opening, Nexus visibility and unload. It does not capture audio or modify the live host. No physical receiver playback or receiver-specific latency was tested.
 
