@@ -4,7 +4,7 @@ A local Qt 6 desktop control center for independently installed components on Ca
 
 The manager creates, imports, validates, installs, enables, disables, updates, backs up, restores and removes components. Applications run as their own applications; services run through `systemd --user`; Caelestia plugins load into the actual shell. Closing or uninstalling the manager does not remove components or close applications.
 
-Tabs switch using the information already loaded, with a short fade. Startup and **Refresh** check component information in the background; navigating after 30 seconds requests a fresh check without blocking the page switch. Settings → **Animate page transitions** turns the fade off. Installation and restore still perform fresh ownership and checksum checks.
+Tabs switch using the information already loaded, with a short fade and a sliding selection highlight. Startup and **Refresh** check component information in the background; navigating after 30 seconds requests a fresh check without blocking the page switch. Settings → **Animate tab transitions** turns both animations off. Installation and restore still perform fresh ownership and checksum checks.
 
 ## Install and launch
 
@@ -15,7 +15,7 @@ Need the Caelestia desktop first? Follow [Install Caelestia on KDE Plasma](docs/
 caelestia-dev-manager
 ```
 
-Installation creates a dedicated manager virtual environment, launcher and KDE desktop entry under user XDG directories. It downloads PySide6 and build dependencies into that environment; it never runs sudo or installs system packages. Existing component state and source remain during manager updates. Run `./install.sh` again to update the manager. `./uninstall.sh` removes only manager-owned files. See [installation details](docs/INSTALLATION.md).
+Installation creates a dedicated manager virtual environment, launcher and KDE desktop entry under user XDG directories. The launcher and window use the bundled logo with its own colors, independent of the system icon theme. It downloads PySide6 and build dependencies into that environment; it never runs sudo or installs system packages. Existing component state and source remain during manager updates. Run `./install.sh` again to update the manager. `./uninstall.sh` removes only manager-owned files. See [installation details](docs/INSTALLATION.md).
 
 For a new computer, `install-from-github.py` checks for Git, clones the suite into
 user XDG data and invokes the manager installer. Run it with Python 3.11+; missing

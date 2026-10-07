@@ -3,3 +3,4 @@ recursive-include docs *.md
 recursive-include scripts *.py *.cpp *.txt
 recursive-include plugins/_template *.json *.md *.py
 recursive-include tests *.py
+recursive-include app/assets *.svg

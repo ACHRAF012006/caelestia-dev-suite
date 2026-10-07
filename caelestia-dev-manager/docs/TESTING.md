@@ -38,6 +38,14 @@ transitions and preference persistence. It also verifies that metadata-only
 backup lists never read blobs while restore still rejects checksum tampering,
 and that cached healthy status never bypasses installed-file ownership checks.
 
+The navigation highlight regression checks its intermediate position, rapid
+mouse/keyboard selection, immediate page changes, final alignment, resize and
+disabling animation. `tests/test_branding.py` renders the logo under changed
+system palettes/themes and verifies installer ownership, pre-logo upgrades,
+modified-file protection and owned-only uninstall using mocked downloads.
+Desktop shortcut tests preserve the declared original SVG and its absolute
+installed path through enable/disable and uninstall.
+
 ## Desktop acceptance
 
 The explicit acceptance helper performs live **harmless unique dummy** app/service checks. It never installs or modifies a Caelestia plugin and never restarts the production shell.
@@ -72,6 +80,13 @@ The first prepares real binary-wheel Python dependencies in an isolated environm
 The shortcut helper uses native clipboard paste/import and installation dialogs with **temporary source, XDG and desktop directories only**. It closes the manager window, launches the generated executable desktop file through real KDE KIO, checks the independent application's output, reopens the manager to verify shortcut recognition, then uninstalls while preserving source and an unrelated desktop file. It does not add a shortcut to the real KDE desktop or alter Plasma folder settings. Rebuild the catalogue probe from the current source first; its `--file` mode validates launching a specific desktop entry outside the application catalogue.
 
 ## Results on this machine
+
+Manager 0.3.2 (2026-10-07): **175 automated tests passed**; wheel and source
+distribution include the bundled SVG. Offscreen previews checked the logo and
+moving/final highlight. A real temporary HOME/XDG manager install/update/uninstall
+passed, including installed version, original logo contents, absolute desktop
+icon path, receipt ownership and preservation of an independently launchable
+component, its source and registry. Production installations were not changed.
 
 Manager 0.3.1 (2026-10-07): **171 automated tests passed**; wheel and source
 distribution built successfully. Navigation and refresh regression tests use temporary

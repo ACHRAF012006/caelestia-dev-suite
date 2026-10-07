@@ -135,12 +135,43 @@ def test_rapid_switches_finish_cleanly_and_animation_preference_persists(window,
     atomic_write(manager.paths.config / "caelestia-dev-manager/settings.json", b'{"editor": "kate"}')
     window.animations_setting.setChecked(False)
     assert not window.stack.animations_enabled
+    assert not window.nav.animations_enabled
     window.navigate("Settings"); assert window.stack.overlay.isHidden()
     saved = json.loads((manager.paths.config / "caelestia-dev-manager/settings.json").read_text())
     assert saved == {"editor": "kate", "animations_enabled": False}
     reopened = Window(manager)
     assert not reopened.stack.animations_enabled and not reopened.animations_setting.isChecked()
+    assert not reopened.nav.animations_enabled
     reopened.close()
+
+
+def test_highlight_slides_and_rapid_mouse_keyboard_switches_stay_immediate(window):
+    nav = window.nav
+    start = nav.highlight.geometry()
+    nav.setCurrentRow(4)
+    target = nav.target_rect()
+    assert nav.animation.state() == QAbstractAnimation.Running
+    assert nav.highlight.geometry() == start
+    nav.animation.setCurrentTime(65)
+    middle = nav.highlight.geometry()
+    assert start.y() < middle.y() < target.y()
+    assert nav.highlight.testAttribute(Qt.WA_TransparentForMouseEvents)
+    QTest.mouseClick(nav.viewport(), Qt.LeftButton, pos=nav.visualItemRect(nav.item(2)).center())
+    assert nav.currentRow() == window.stack.currentIndex() == 2
+    assert nav.animation.startValue() == middle
+    QTest.keyClick(nav, Qt.Key_Down)
+    assert nav.currentRow() == window.stack.currentIndex() == 3
+    QTest.qWait(230)
+    assert nav.highlight.geometry() == nav.target_rect()
+    assert nav.animation.state() == QAbstractAnimation.Stopped
+    window.resize(1040, 760); QApplication.processEvents()
+    assert nav.highlight.geometry() == nav.target_rect()
+    nav.setCurrentRow(6)
+    window.animations_setting.setChecked(False)
+    assert nav.highlight.geometry() == nav.target_rect()
+    nav.setCurrentRow(0)
+    assert nav.highlight.geometry() == nav.target_rect()
+    assert nav.animation.state() == QAbstractAnimation.Stopped
 
 
 def test_backup_catalogue_does_not_read_blobs_but_restore_still_checks_them(manager, app_files, monkeypatch):

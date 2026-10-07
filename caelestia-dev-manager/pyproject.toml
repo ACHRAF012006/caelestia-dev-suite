@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "caelestia-dev-manager"
-version = "0.3.1"
+version = "0.3.2"
 description = "Local independent component lifecycle manager for KDE and Caelestia"
 requires-python = ">=3.11"
 dependencies = ["PySide6>=6.8,<7", "packaging>=24"]
@@ -14,6 +14,9 @@ caelestia-dev-manager = "app.main:main"
 
 [tool.setuptools.packages.find]
 include = ["app*", "backend*"]
+
+[tool.setuptools.package-data]
+app = ["assets/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

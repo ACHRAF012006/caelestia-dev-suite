@@ -70,6 +70,25 @@ def test_manifest_shortcut_install_and_ownership(manager, app_files):
     assert reopened.has_desktop_shortcut(m["id"])
     assert reopened.status(reopened.installed(m["id"]))["desktop_shortcut_state"] == "Created"
 
+
+def test_desktop_shortcut_preserves_original_svg_logo(manager, app_files):
+    directory = configure(manager)
+    m, files = app_files
+    m["desktop"] = {"createShortcut": True, "icon": "assets/icon.svg"}
+    files["manifest.json"] = json.dumps(m)
+    files["assets/icon.svg"] = '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="#bdc6dc"/></svg>\n'
+    manager.create(files); manager.install(m["id"])
+    installed_icon = manager.paths.root(m) / "assets/icon.svg"
+    shortcut = directory / shortcut_filename(m)
+    assert f"Icon={installed_icon}\n" in shortcut.read_text()
+    assert shortcut.read_bytes() == manager.canonical_desktop(m).read_bytes()
+    assert installed_icon.read_text() == files["assets/icon.svg"]
+    assert manager.registry.owner(installed_icon) == m["id"]
+    manager.set_enabled(m["id"], False); manager.set_enabled(m["id"], True)
+    assert f"Icon={installed_icon}\n" in shortcut.read_text()
+    manager.uninstall(m["id"])
+    assert not shortcut.exists() and not installed_icon.exists()
+
 def test_toggle_without_reinstalling_payload(manager, app_files):
     directory = configure(manager); m = create_app(manager, app_files); manager.install(m["id"])
     payload = manager.paths.root(m) / "src/main.py"; before = payload.stat().st_mtime_ns

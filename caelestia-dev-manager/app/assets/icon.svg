@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>Caelestia Dev Manager</title>
+  <defs>
+    <linearGradient id="sky" x1="16" y1="12" x2="112" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#303b58"/>
+      <stop offset="1" stop-color="#181e2d"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#sky)"/>
+  <rect x="4.5" y="4.5" width="119" height="119" rx="27.5" fill="none" stroke="#566583"/>
+  <path d="M74 24a31 31 0 1 0 30 39 27 27 0 0 1-30-39Z" fill="#bdcaff"/>
+  <path d="m91 23 3.5 9.5L104 36l-9.5 3.5L91 49l-3.5-9.5L78 36l9.5-3.5Z" fill="#e3e9ff"/>
+  <rect x="46" y="65" width="61" height="39" rx="10" fill="#242f45" stroke="#8398ca" stroke-width="2"/>
+  <g fill="none" stroke="#c8d5ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m65 77-8 7 8 7m23-14 8 7-8 7m-8-17-7 22"/>
+  </g>
+</svg>

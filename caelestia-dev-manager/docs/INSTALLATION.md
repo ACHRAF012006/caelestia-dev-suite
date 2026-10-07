@@ -11,7 +11,7 @@ From the repository:
 ~/.local/bin/caelestia-dev-manager
 ```
 
-The manager appears in the KDE Application Launcher as **Caelestia Dev Manager**. The command works where `~/.local/bin` is on PATH. The installer records absolute development repository location; launcher paths are quoted to support spaces. Use `caelestia-dev-manager --project /path/to/repository` to manage another repository, or `--sandbox /tmp/cdm-test` for isolated source/data/config/state paths and mocked systemd.
+The manager appears in the KDE Application Launcher as **Caelestia Dev Manager**. Its desktop entry references the installed bundled logo by absolute path, preserving the artwork's colors across icon themes; a copy of this launcher placed on the desktop uses the same logo. Existing desktop copies made before version 0.3.2 should be recreated from the updated application launcher. The command works where `~/.local/bin` is on PATH. The installer records absolute development repository location; launcher paths are quoted to support spaces. Use `caelestia-dev-manager --project /path/to/repository` to manage another repository, or `--sandbox /tmp/cdm-test` for isolated source/data/config/state paths and mocked systemd.
 
 The GitHub suite keeps the manager in `caelestia-dev-manager/` and published
 components in `components/`. Its standalone `install-from-github.py` checks Git
@@ -33,6 +33,7 @@ after updates or restores. Settings can disable startup checks. See
 | Data | Default location |
 | --- | --- |
 | Installed manager | ~/.local/share/caelestia-dev-manager/manager/venv/ |
+| Manager logo | ~/.local/share/caelestia-dev-manager/manager/icon.svg |
 | Manager launcher | ~/.local/bin/caelestia-dev-manager |
 | Manager desktop entry | ~/.local/share/applications/caelestia-dev-manager.desktop |
 | Manager installation receipt | ~/.config/caelestia-dev-manager/manager-install.json |

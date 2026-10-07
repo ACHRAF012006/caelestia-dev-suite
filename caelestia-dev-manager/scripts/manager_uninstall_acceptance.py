@@ -5,8 +5,10 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import tomllib
 
 project = Path(__file__).resolve().parents[1]
+version_expected = tomllib.loads((project / "pyproject.toml").read_text())["project"]["version"]
 with tempfile.TemporaryDirectory(prefix="cdm-manager-install-") as directory:
     root = Path(directory)
     env = {**os.environ, "HOME": str(root / "home"), "XDG_DATA_HOME": str(root / "data"),
@@ -21,7 +23,13 @@ with tempfile.TemporaryDirectory(prefix="cdm-manager-install-") as directory:
     sentinel = root / "shadow-executed"
     (shadow / "main.py").write_text(f"open({str(sentinel)!r}, 'w').write('bad')\n")
     version = subprocess.run([str(root / "home/.local/bin/caelestia-dev-manager"), "--version"], env=env, cwd=shadow.parent, capture_output=True, text=True, check=True)
-    assert version.stdout.strip() == "0.1.0" and not sentinel.exists()
+    assert version.stdout.strip() == version_expected and not sentinel.exists()
+    icon = root / "data/caelestia-dev-manager/manager/icon.svg"
+    desktop = root / "data/applications/caelestia-dev-manager.desktop"
+    assert icon.read_bytes() == (project / "app/assets/icon.svg").read_bytes()
+    assert f"Icon={icon}\n" in desktop.read_text()
+    receipt = json.loads((root / "config/caelestia-dev-manager/manager-install.json").read_text())
+    assert str(icon) in {f["path"] for f in receipt["files"]}
     setup = '''
 import json, sys
 from pathlib import Path
@@ -42,6 +50,7 @@ m.install(manifest["id"])
     assert database.read_bytes() == before_database and source.read_bytes() == before_source
     assert not (root / "home/.local/bin/caelestia-dev-manager").exists()
     assert not (root / "data/applications/caelestia-dev-manager.desktop").exists()
+    assert not icon.exists()
     result = subprocess.run([str(root / "home/.local/bin/uninstall-survivor")], env=env, capture_output=True, text=True, check=True)
     assert result.stdout.strip() == "independent-survivor"
     assert (root / "data/applications/uninstall-survivor.desktop").exists()

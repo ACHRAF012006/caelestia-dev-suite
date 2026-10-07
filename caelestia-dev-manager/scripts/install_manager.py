@@ -85,7 +85,9 @@ def main():
         # Use the same XDG-compliant Exec quoting as component desktop entries.
         sys.path.insert(0, str(project))
         from backend.installers import desktop_quote
-        write(desktop, "[Desktop Entry]\nType=Application\nName=Caelestia Dev Manager\nComment=Create and manage independent KDE and Caelestia components\nExec=" + desktop_quote(launcher) + "\nIcon=applications-development\nTerminal=false\nCategories=Development;\n")
+        icon = base / "icon.svg"
+        write(icon, (project / "app/assets/icon.svg").read_text(encoding="utf-8"))
+        write(desktop, "[Desktop Entry]\nType=Application\nName=Caelestia Dev Manager\nComment=Create and manage independent KDE and Caelestia components\nExec=" + desktop_quote(launcher) + "\nIcon=" + str(icon).replace("\\", "\\\\") + "\nTerminal=false\nCategories=Development;\n")
     finally:
         # Persist partial ownership too, so a failed dependency download is recoverable/uninstallable.
         files = []
@@ -93,7 +95,7 @@ def main():
             if p.is_file() and not p.is_symlink(): files.append({"path": str(p), "checksum": checksum(p)})
         for p in (launcher, desktop):
             if p.exists(): files.append({"path": str(p), "checksum": checksum(p)})
-        write(receipt, json.dumps({"version": "0.3.1", "project": str(project), "files": files}, indent=2), 0o600)
+        write(receipt, json.dumps({"version": "0.3.2", "project": str(project), "files": files}, indent=2), 0o600)
     for directory in (data / "caelestia-dev-manager/apps", data / "caelestia-dev-manager/backups", config / "caelestia-dev-manager", Path(os.environ.get("XDG_STATE_HOME", home / ".local/state")) / "caelestia-dev-manager"):
         no_links(directory).mkdir(parents=True, exist_ok=True)
     if shutil.which("desktop-file-validate"): subprocess.run(["desktop-file-validate", str(desktop)], check=True)

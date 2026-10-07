@@ -8,7 +8,7 @@ import sys
 import time
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Slot
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPushButton, QSplitter, QTabWidget, QTextEdit, QVBoxLayout, QWidget)
@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
 from app.editor import CodeEditor
 from app.store import StorePage
 from app.review import ReviewDialog
-from app.navigation import AnimatedStack
+from app.navigation import AnimatedStack, AnimatedNavigation
+from app.branding import application_icon
 from app.inspection import Inspection
 from app import preferences
 from backend.paths import VERSION, Paths, SafetyError, no_symlinks, relative
@@ -88,13 +89,14 @@ class Window(QMainWindow):
         self.closing = False
         self.initializing = True
         self.setWindowTitle("Caelestia Dev Manager")
-        self.setWindowIcon(QIcon.fromTheme("applications-development"))
+        self.setWindowIcon(application_icon())
         self.resize(1240, 830)
         container = QWidget(); main = QHBoxLayout(container); main.setContentsMargins(0, 0, 0, 0)
-        self.nav = QListWidget(); self.nav.setFixedWidth(202)
+        self.nav = AnimatedNavigation(); self.nav.setFixedWidth(202)
         for name in ["Dashboard", "Components", "Create / Import", "Codex Context", "Backups", "Logs", "Settings", "Component Store"]: self.nav.addItem(name)
         self.stack = AnimatedStack()
         self.stack.set_animations_enabled(preferences.load(manager.paths).get("animations_enabled", True) is not False)
+        self.nav.set_animations_enabled(self.stack.animations_enabled)
         main.addWidget(self.nav); main.addWidget(self.stack, 1)
         self.setCentralWidget(container)
         self.make_dashboard(); self.make_components(); self.make_import(); self.make_context()
@@ -369,7 +371,7 @@ class Window(QMainWindow):
         self.store_startup.setChecked(Store(self.manager.paths).settings["check_on_startup"])
         self.store_startup.toggled.connect(lambda checked: self.guard(lambda: self.store_page.set_startup_check(checked)))
         layout.addWidget(self.store_startup)
-        self.animations_setting = QCheckBox("Animate page transitions")
+        self.animations_setting = QCheckBox("Animate tab transitions")
         self.animations_setting.setChecked(self.stack.animations_enabled)
         self.animations_setting.toggled.connect(lambda checked: self.guard(lambda: self.set_animations(checked)))
         layout.addWidget(self.animations_setting)
@@ -381,6 +383,7 @@ class Window(QMainWindow):
     def set_animations(self, checked):
         preferences.save_animations(self.manager.paths, checked)
         self.stack.set_animations_enabled(checked)
+        self.nav.set_animations_enabled(checked)
 
     def update_reference(self):
         self.show_text("Update reference", "Run this from your terminal:\n\n" + shlex.join([str(self.manager.paths.project / "update-reference.sh")]) +
@@ -663,6 +666,7 @@ class Window(QMainWindow):
     def closeEvent(self, event):
         self.closing = True
         self.stack.stop_transition()
+        self.nav.stop_transition()
         if self.refresh_worker is not None: self.refresh_worker.cancelled.set()
         inspected = self.refresh_worker is None or self.refresh_worker.wait(50)
         if not self.store_page.shutdown() or not inspected:
