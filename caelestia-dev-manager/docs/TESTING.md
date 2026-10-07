@@ -30,6 +30,14 @@ details and disabled acceptance for invalid plans. Bootstrap checks reject
 missing Git and unowned directories.
 No GitHub download or production installation is required by these tests.
 
+`tests/test_navigation.py` covers cached tab switching without scans, event-loop
+responsiveness during slow inspection, frozen inventory reads without sharing
+SQLite, obsolete-result rejection, retaining data on refresh failure, request
+coalescing, deferred startup, cancelling workers on close, rapid/disabled page
+transitions and preference persistence. It also verifies that metadata-only
+backup lists never read blobs while restore still rejects checksum tampering,
+and that cached healthy status never bypasses installed-file ownership checks.
+
 ## Desktop acceptance
 
 The explicit acceptance helper performs live **harmless unique dummy** app/service checks. It never installs or modifies a Caelestia plugin and never restarts the production shell.
@@ -64,6 +72,16 @@ The first prepares real binary-wheel Python dependencies in an isolated environm
 The shortcut helper uses native clipboard paste/import and installation dialogs with **temporary source, XDG and desktop directories only**. It closes the manager window, launches the generated executable desktop file through real KDE KIO, checks the independent application's output, reopens the manager to verify shortcut recognition, then uninstalls while preserving source and an unrelated desktop file. It does not add a shortcut to the real KDE desktop or alter Plasma folder settings. Rebuild the catalogue probe from the current source first; its `--file` mode validates launching a specific desktop entry outside the application catalogue.
 
 ## Results on this machine
+
+Manager 0.3.1 (2026-10-07): **171 automated tests passed**; wheel and source
+distribution built successfully. Navigation and refresh regression tests use temporary
+XDG roots and verify worker/UI thread affinity. A read-only offscreen profile used the live registry's one component,
+4,376 owned files and three backups without changing the live installation.
+The full status baseline took about 2 seconds with profiling enabled. With
+inspection on a worker and real Qt event-loop navigation, switches averaged
+2.8 ms (5.21 ms slowest) while 21 timer ticks ran during inspection/final frames.
+Metadata-only backup listing took 0.007 seconds. These are measurements on this
+machine, not performance guarantees for other hardware or native display setups.
 
 Manager 0.3.0: **160 automated tests passed**; wheel and source distribution
 built successfully. The simplified store was visually checked offscreen with

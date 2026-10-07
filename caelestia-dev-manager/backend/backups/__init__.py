@@ -2,7 +2,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from backend.paths import VERSION, SafetyError, atomic_write, digest, inside, no_symlinks
+from backend.paths import VERSION, SafetyError, atomic_write, digest, inside, no_symlinks, component_id
 
 def now(): return datetime.now(timezone.utc).isoformat()
 
@@ -36,6 +36,24 @@ class Backups:
             if len(child.name) == 32:
                 try: result.append(self.read(child.name))
                 except (OSError, ValueError): pass
+        return sorted(result, key=lambda x: x["date"], reverse=True)
+
+    def catalog(self, checkpoint=lambda: None):
+        """Display metadata only; restore/read still verify every owned blob."""
+        if not self.paths.backups.exists(): return []
+        result = []
+        for child in no_symlinks(self.paths.backups).iterdir():
+            checkpoint()
+            try:
+                if len(child.name) != 32 or any(x not in "0123456789abcdef" for x in child.name): continue
+                meta = json.loads(no_symlinks(child / "metadata.json").read_text())
+                if meta["backup_id"] != child.name or meta["component_id"] != meta["record"]["id"]: continue
+                component_id(meta["component_id"])
+                if not all(isinstance(meta[key], str) for key in ("date", "reason")): continue
+                if meta["version"] is not None and not isinstance(meta["version"], str): continue
+                result.append({key: meta[key] for key in ("backup_id", "component_id", "date", "reason", "version", "record")})
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
         return sorted(result, key=lambda x: x["date"], reverse=True)
 
     def read(self, id):

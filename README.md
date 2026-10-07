@@ -4,10 +4,12 @@ Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE P
 
 ## Repository layout
 
-- **`caelestia-dev-manager/`** — Dev Manager 0.3.0, installer, documentation and tests.
+- **`caelestia-dev-manager/`** — Dev Manager 0.3.1, installer, documentation and tests.
 - **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 is included.
 
 The manager handles installation and lifecycle. Components continue running after it closes.
+
+Pages reuse loaded information and switch with a brief fade. Startup and Refresh check component information in the background, keeping navigation responsive. Settings → **Animate page transitions** turns animations off.
 
 ## Install Caelestia on KDE
 

@@ -102,7 +102,10 @@ class StorePage(QWidget):
         update = installed and record.get("installed_source_hash") != entry["hash"]
         protected = False
         if self.manager.paths.source(ident).exists():
-            local = self.manager.source_hash(self.manager.read_source(ident))
+            if ident in self.window.source_fingerprints:
+                local = self.window.source_fingerprints[ident]
+            else:
+                local = self.manager.source_hash(self.manager.read_source(ident))
             origin = (record or {}).get("store_origin", {})
             protected = local != entry["hash"] and (origin.get("repository") != self.store.settings["repository"] or origin.get("hash") != local)
         launchable = installed and record["installed_manifest"]["type"] in {"standalone-app", "script", "user-service"} and (record.get("enabled") or record["installed_manifest"]["type"] == "user-service")

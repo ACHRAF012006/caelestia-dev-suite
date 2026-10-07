@@ -696,7 +696,8 @@ class Manager:
             files = self.read_source(record["id"])
             current = manifest_parse(files["manifest.json"])
             result["manifest"] = current
-            result["source_modified"] = bool(record.get("installed") and self.source_hash(files) != record.get("installed_source_hash"))
+            result["source_hash"] = self.source_hash(files)
+            result["source_modified"] = bool(record.get("installed") and result["source_hash"] != record.get("installed_source_hash"))
             result["validation"] = validate(files, current, self.environment)
         except (OSError, ValueError, KeyError) as e: result["validation"] = {"valid": False, "errors": [str(e)], "warnings": []}
         for f in self.registry.files(record["id"]):

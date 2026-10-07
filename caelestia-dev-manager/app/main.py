@@ -5,16 +5,20 @@ from pathlib import Path
 import re
 import shlex
 import sys
+import time
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
-    QMessageBox, QPushButton, QSplitter, QStackedWidget, QTabWidget, QTextEdit, QVBoxLayout, QWidget)
+    QMessageBox, QPushButton, QSplitter, QTabWidget, QTextEdit, QVBoxLayout, QWidget)
 
 from app.editor import CodeEditor
 from app.store import StorePage
 from app.review import ReviewDialog
+from app.navigation import AnimatedStack
+from app.inspection import Inspection
+from app import preferences
 from backend.paths import VERSION, Paths, SafetyError, no_symlinks, relative
 from backend.manager import Manager
 from backend.validators import TYPES, RUNTIMES, manifest_parse, validate
@@ -73,20 +77,38 @@ class Window(QMainWindow):
         self.manager = manager
         self.current_id = None
         self.backup_metadata = []
+        self.statuses = []
+        self.snapshot_ready = False
+        self.dependency_reports = {}
+        self.source_fingerprints = {}
+        self.refresh_worker = None
+        self.refresh_generation = 0
+        self.refresh_pending = False
+        self.last_refresh = 0
+        self.closing = False
+        self.initializing = True
         self.setWindowTitle("Caelestia Dev Manager")
         self.setWindowIcon(QIcon.fromTheme("applications-development"))
         self.resize(1240, 830)
         container = QWidget(); main = QHBoxLayout(container); main.setContentsMargins(0, 0, 0, 0)
         self.nav = QListWidget(); self.nav.setFixedWidth(202)
         for name in ["Dashboard", "Components", "Create / Import", "Codex Context", "Backups", "Logs", "Settings", "Component Store"]: self.nav.addItem(name)
-        self.stack = QStackedWidget(); main.addWidget(self.nav); main.addWidget(self.stack, 1)
+        self.stack = AnimatedStack()
+        self.stack.set_animations_enabled(preferences.load(manager.paths).get("animations_enabled", True) is not False)
+        main.addWidget(self.nav); main.addWidget(self.stack, 1)
         self.setCentralWidget(container)
         self.make_dashboard(); self.make_components(); self.make_import(); self.make_context()
         self.make_backups(); self.make_logs(); self.make_settings()
         self.store_page = StorePage(self); self.stack.addWidget(self.store_page)
         self.nav.currentRowChanged.connect(self.change_page)
         self.nav.setCurrentRow(0)
-        self.refresh()
+        self.initializing = False
+        if manager.runtime.real:
+            self.apply_snapshot({"statuses": [], "dependencies": {}, "environment": manager.environment,
+                                 "backups": [], "logs": manager.registry.logs()}, ready=False)
+            QTimer.singleShot(0, lambda: self.guard(self.request_refresh) if not self.closing else None)
+        else:
+            self.refresh()
 
     def guard(self, fn):
         try: return fn()
@@ -112,9 +134,9 @@ class Window(QMainWindow):
 
     def change_page(self, index):
         self.stack.setCurrentIndex(index)
-        if index in {0, 1, 4, 5, 6}: self.guard(self.refresh)
         if index == 3: self.generate_context()
-        if index == 7: self.guard(self.store_page.fill)
+        if not self.initializing and self.manager.runtime.real and self.refresh_worker is None and time.monotonic() - self.last_refresh > 30:
+            self.guard(self.request_refresh)
 
     def navigate(self, name):
         for index in range(self.nav.count()):
@@ -134,14 +156,14 @@ class Window(QMainWindow):
             cards.addWidget(card)
         layout.addLayout(cards)
         layout.addLayout(row(button("+ New Component", self.new_component, True), button("Paste Codex Package", lambda: self.nav.setCurrentRow(2)),
-                             button("Import Folder", self.import_folder), button("Copy Codex Prompt", self.copy_context), button("Refresh", lambda: self.guard(self.refresh))))
+                             button("Import Folder", self.import_folder), button("Copy Codex Prompt", self.copy_context), button("Refresh", lambda: self.guard(self.request_refresh))))
         self.dashboard_text = CodeEditor(readonly=True); layout.addWidget(self.dashboard_text)
         self.stack.addWidget(p)
 
     def make_components(self):
         p, layout = page("Components", "Development source and installed copies are tracked separately. Select a component to manage it.")
         layout.addLayout(row(button("+ New Component", self.new_component, True), button("Import Folder", self.import_folder),
-                             button("Refresh", lambda: self.guard(self.refresh))))
+                             button("Refresh", lambda: self.guard(self.request_refresh))))
         split = QSplitter(); self.components = QListWidget(); self.components.setMinimumWidth(260)
         self.components.currentItemChanged.connect(self.select_component); split.addWidget(self.components)
         details = QWidget(); dl = QVBoxLayout(details); dl.setContentsMargins(12, 0, 0, 0)
@@ -302,16 +324,24 @@ class Window(QMainWindow):
         self.context_editor = CodeEditor(readonly=True); layout.addWidget(self.context_editor); self.stack.addWidget(p)
 
     def generate_context(self):
-        prompt = context(self.manager, self.request.toPlainText()); self.context_editor.setPlainText(prompt); return prompt
+        if not self.snapshot_ready:
+            self.context_editor.setPlainText("Loading component information…")
+            return ""
+        prompt = context(self.manager, self.request.toPlainText(), self.statuses)
+        if prompt != self.context_editor.toPlainText(): self.context_editor.setPlainText(prompt)
+        return prompt
 
     def copy_context(self):
+        if not self.snapshot_ready:
+            self.notify("Component information is still loading. Copy the prompt after the refresh completes.")
+            return False
         QApplication.clipboard().setText(self.generate_context()); self.notify("Full Codex prompt copied to clipboard")
 
     def make_backups(self):
         p, layout = page("Backups", "Checksummed snapshots are taken before installed files are replaced or removed. Restore never changes development source.")
         self.backup_list = QListWidget(); layout.addWidget(self.backup_list)
         layout.addLayout(row(button("Inspect Metadata", lambda: self.guard(self.inspect_backup)), button("Restore", lambda: self.guard(self.restore_backup), True),
-                             button("Refresh", lambda: self.guard(self.refresh))))
+                             button("Refresh", lambda: self.guard(self.request_refresh))))
         self.stack.addWidget(p)
 
     def selected_backup(self):
@@ -330,7 +360,7 @@ class Window(QMainWindow):
     def make_logs(self):
         p, layout = page("Logs", "Manager lifecycle events. Component runtime logs are available from Components.")
         self.logs_editor = CodeEditor(readonly=True); layout.addWidget(self.logs_editor)
-        layout.addWidget(button("Refresh", lambda: self.guard(self.refresh))); self.stack.addWidget(p)
+        layout.addWidget(button("Refresh", lambda: self.guard(self.request_refresh))); self.stack.addWidget(p)
 
     def make_settings(self):
         p, layout = page("Settings", "Local paths, environment detection, reference updates, and recovery.")
@@ -339,10 +369,18 @@ class Window(QMainWindow):
         self.store_startup.setChecked(Store(self.manager.paths).settings["check_on_startup"])
         self.store_startup.toggled.connect(lambda checked: self.guard(lambda: self.store_page.set_startup_check(checked)))
         layout.addWidget(self.store_startup)
-        layout.addLayout(row(button("Refresh Detection", lambda: self.guard(self.refresh)), button("Reload Caelestia Shell", lambda: self.guard(self.reload_shell)),
+        self.animations_setting = QCheckBox("Animate page transitions")
+        self.animations_setting.setChecked(self.stack.animations_enabled)
+        self.animations_setting.toggled.connect(lambda checked: self.guard(lambda: self.set_animations(checked)))
+        layout.addWidget(self.animations_setting)
+        layout.addLayout(row(button("Refresh Detection", lambda: self.guard(self.request_refresh)), button("Reload Caelestia Shell", lambda: self.guard(self.reload_shell)),
                              button("Recover Interrupted Operation", lambda: self.guard(self.recover))))
         layout.addWidget(button("Reference Update Command", lambda: self.guard(self.update_reference)))
         self.stack.addWidget(p)
+
+    def set_animations(self, checked):
+        preferences.save_animations(self.manager.paths, checked)
+        self.stack.set_animations_enabled(checked)
 
     def update_reference(self):
         self.show_text("Update reference", "Run this from your terminal:\n\n" + shlex.join([str(self.manager.paths.project / "update-reference.sh")]) +
@@ -357,11 +395,59 @@ class Window(QMainWindow):
             self.notify(self.manager.recover()); self.refresh()
 
     def refresh(self):
+        """Immediate refresh after a reviewed mutation; tab navigation never calls this."""
+        self.refresh_generation += 1
+        if self.refresh_worker is not None: self.refresh_worker.cancelled.set()
         from backend.environment import detect as detect_environment
         self.manager.environment = detect_environment(self.manager.paths)
         self.manager.discover()
-        self.statuses = self.manager.all_status()
-        env = self.manager.environment
+        statuses = self.manager.all_status()
+        self.apply_snapshot({"statuses": statuses,
+            "dependencies": {r["id"]: self.manager.dependency_status(r["id"]) for r in statuses},
+            "environment": self.manager.environment, "backups": self.manager.backups.catalog(),
+            "logs": self.manager.registry.logs()})
+
+    def request_refresh(self):
+        if self.closing: return
+        if self.refresh_worker is not None:
+            self.refresh_pending = True
+            return
+        self.manager.discover()
+        self.refresh_generation += 1
+        self.last_refresh = time.monotonic()
+        self.refresh_worker = Inspection(self.manager, self.refresh_generation, self)
+        self.refresh_worker.result.connect(self.inspected)
+        self.refresh_worker.failed.connect(self.inspection_failed)
+        self.refresh_worker.finished.connect(self.inspection_finished)
+        self.notify("Checking components in the background…")
+        self.refresh_worker.start()
+
+    @Slot(int, dict)
+    def inspected(self, generation, snapshot):
+        if self.closing or generation != self.refresh_generation: return
+        self.apply_snapshot(snapshot)
+        self.notify("Component information refreshed")
+
+    @Slot(int, str)
+    def inspection_failed(self, generation, message):
+        if not self.closing and generation == self.refresh_generation:
+            self.notify("Could not refresh component information: " + message)
+
+    @Slot()
+    def inspection_finished(self):
+        worker, self.refresh_worker = self.refresh_worker, None
+        if worker is not None: worker.deleteLater()
+        pending, self.refresh_pending = self.refresh_pending, False
+        if pending and not self.closing: self.guard(self.request_refresh)
+
+    def apply_snapshot(self, snapshot, ready=True):
+        self.snapshot_ready = ready
+        self.statuses = snapshot["statuses"]
+        self.dependency_reports = snapshot["dependencies"]
+        self.source_fingerprints = {r["id"]: r.get("source_hash") for r in self.statuses}
+        self.manager.environment = snapshot["environment"]
+        self.last_refresh = time.monotonic()
+        env = snapshot["environment"]
         self.environment_label.setText(f"Caelestia  {'Running' if env['caelestia_running'] else 'Stopped / not detected'}     •     KDE Plasma  {env['plasma_version'] or 'Not detected'}     •     Session  {env['session']}")
         counts = {"Components": len(self.statuses), "Installed": sum(bool(x.get("installed")) for x in self.statuses),
                   "Enabled": sum(bool(x.get("enabled")) for x in self.statuses),
@@ -379,15 +465,19 @@ class Window(QMainWindow):
         if selected: self.select_id(selected)
         elif self.components.count(): self.components.setCurrentRow(0)
         else: self.select_component(None)
+        selected_backup = self.backup_list.currentItem()
+        selected_backup = selected_backup.data(Qt.UserRole) if selected_backup else None
         self.backup_list.clear()
-        self.backup_metadata = self.manager.backups.list()
+        self.backup_metadata = snapshot["backups"]
         for b in self.backup_metadata:
             item = QListWidgetItem(f"{b['component_id']}  •  {b['version'] or 'not installed'}  •  {b['reason']}\n{b['date']}"); item.setData(Qt.UserRole, b["backup_id"]); self.backup_list.addItem(item)
-        self.logs_editor.setPlainText("\n".join(self.manager.registry.logs()) or "No events recorded")
+            if b["backup_id"] == selected_backup: self.backup_list.setCurrentItem(item)
+        self.logs_editor.setPlainText("\n".join(snapshot["logs"]) or "No events recorded")
         self.settings_editor.setPlainText(json.dumps({"project": str(self.manager.paths.project), "database": str(self.manager.paths.database),
                 "backups": str(self.manager.paths.backups), "manager_version": VERSION,
                 "recovery_required": self.manager.journal.exists(), **env}, indent=2))
         if hasattr(self, "store_page"): self.store_page.fill()
+        if self.nav.currentRow() == 3: self.generate_context()
 
     def select_id(self, id):
         for i in range(self.components.count()):
@@ -406,7 +496,8 @@ class Window(QMainWindow):
         r = next((r for r in self.statuses if r["id"] == self.current_id), None)
         if not r: return
         self.shortcut_state.setText("Desktop Shortcut: " + r["desktop_shortcut_state"])
-        dependencies = self.manager.dependency_status(self.current_id)
+        dependencies = self.dependency_reports.get(self.current_id)
+        if dependencies is None: return
         dev = dependencies["development"]
         problems = [x["requirement"] + " (" + x["status"] + ")" for x in [*dev["system"], *dev["python"]] if x["status"] not in {"available", "prepared"}]
         summary = "Development dependencies: " + ("Ready" if dev["ready"] else ", ".join(problems) or "Inspection unavailable") + (" · Last preparation failed; open Dependencies" if dev["last_preparation_error"] else "")
@@ -534,10 +625,10 @@ class Window(QMainWindow):
             self.manager.set_enabled(self.current_id, enabled); self.refresh()
 
     def launch_selected(self):
-        self.manager.runtime.launch(self.manager.installed(self.current_id)); QTimer.singleShot(600, lambda: self.guard(self.refresh)); self.notify("Launch requested")
+        self.manager.runtime.launch(self.manager.installed(self.current_id)); QTimer.singleShot(600, lambda: self.guard(self.request_refresh)); self.notify("Launch requested")
 
     def stop_selected(self):
-        self.manager.runtime.stop(self.manager.installed(self.current_id)); QTimer.singleShot(600, lambda: self.guard(self.refresh))
+        self.manager.runtime.stop(self.manager.installed(self.current_id)); QTimer.singleShot(600, lambda: self.guard(self.request_refresh))
 
     def restart_selected(self):
         record = self.manager.installed(self.current_id)
@@ -545,7 +636,7 @@ class Window(QMainWindow):
         else:
             self.manager.runtime.stop(record)
             QTimer.singleShot(700, lambda: self.guard(lambda: self.manager.runtime.launch(record)))
-        QTimer.singleShot(1100, lambda: self.guard(self.refresh))
+        QTimer.singleShot(1100, lambda: self.guard(self.request_refresh))
 
     def uninstall_selected(self):
         files = self.manager.plan_uninstall(self.current_id)
@@ -570,7 +661,11 @@ class Window(QMainWindow):
             self.manager.delete_source(self.current_id, confirmation); self.refresh()
 
     def closeEvent(self, event):
-        if not self.store_page.shutdown():
+        self.closing = True
+        self.stack.stop_transition()
+        if self.refresh_worker is not None: self.refresh_worker.cancelled.set()
+        inspected = self.refresh_worker is None or self.refresh_worker.wait(50)
+        if not self.store_page.shutdown() or not inspected:
             event.ignore()
             QTimer.singleShot(500, self.close)
             return

@@ -7,12 +7,12 @@ from backend.paths import SafetyError
 READ_FIRST = ["PROJECT_CONTEXT.md", "README.md", "docs/ARCHITECTURE.md", "docs/PLUGIN_SPEC.md",
               "docs/COMPONENT_SPEC.md", "docs/CODEX_PACKAGE_FORMAT.md", "docs/CODEX_WORKFLOW.md"]
 
-def context(manager, request):
+def context(manager, request, statuses=None):
     components = [{"id": r["id"], "type": r["manifest"]["type"], "version": r["manifest"]["version"],
                    "installed": r.get("installed", False), "enabled": r.get("enabled", False),
                    "status": r["status"], "source": str(manager.paths.source(r["id"])),
                    "desktop_shortcut_created": r["desktop_shortcut_created"],
-                   "desktop_shortcut_path": (r.get("desktop_shortcut") or {}).get("path")} for r in manager.all_status()]
+                   "desktop_shortcut_path": (r.get("desktop_shortcut") or {}).get("path")} for r in (manager.all_status() if statuses is None else statuses)]
     try:
         directory = desktop_directory(manager.paths)
         desktop_path = str(directory) if directory else None

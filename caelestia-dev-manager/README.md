@@ -4,6 +4,8 @@ A local Qt 6 desktop control center for independently installed components on Ca
 
 The manager creates, imports, validates, installs, enables, disables, updates, backs up, restores and removes components. Applications run as their own applications; services run through `systemd --user`; Caelestia plugins load into the actual shell. Closing or uninstalling the manager does not remove components or close applications.
 
+Tabs switch using the information already loaded, with a short fade. Startup and **Refresh** check component information in the background; navigating after 30 seconds requests a fresh check without blocking the page switch. Settings → **Animate page transitions** turns the fade off. Installation and restore still perform fresh ownership and checksum checks.
+
 ## Install and launch
 
 Need the Caelestia desktop first? Follow [Install Caelestia on KDE Plasma](docs/CAELESTIA_KDE_SETUP.md), based on the upstream ladybug-me/caelestia-kde repository, then return here to install Dev Manager.
