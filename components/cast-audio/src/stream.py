@@ -3,6 +3,7 @@ import asyncio
 import errno
 from collections import deque
 import secrets
+import socket
 import time
 from urllib.parse import urlsplit
 
@@ -16,7 +17,10 @@ class Stream:
         self.port = port
         self.server = self.encoder = self.pump = None
         self.queues, self.clients = set(), set()
-        self.recent = deque(maxlen=3)
+        self.writers = set()
+        self.closing = False
+        self.close_task = None
+        self.recent = deque(maxlen=2)
         self.ready = asyncio.Event()
         self.failure = ""
         self.last_audio = time.monotonic()
@@ -31,7 +35,8 @@ class Stream:
             self.url = f"http://{self.address}:{port}{self.path}"
             self.encoder = await self.processes.spawn([
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-                "-f", "pulse", "-i", monitor, "-vn", "-c:a", "libmp3lame",
+                "-f", "pulse", "-sample_rate", "48000", "-channels", "2",
+                "-fragment_size", "3840", "-i", monitor, "-vn", "-c:a", "libmp3lame",
                 "-b:a", f"{bitrate}k", "-ar", "48000", "-ac", "2", "-flush_packets", "1",
                 "-write_xing", "0", "-id3v2_version", "0", "-f", "mp3", "pipe:1"], capture=True)
             self.pump = asyncio.create_task(self.read_audio())
@@ -47,7 +52,7 @@ class Stream:
 
     async def read_audio(self):
         try:
-            while block := await self.encoder.stdout.read(4096):
+            while block := await self.encoder.stdout.read(1024):
                 self.recent.append(block)
                 self.last_audio = time.monotonic()
                 self.ready.set()
@@ -74,12 +79,15 @@ class Stream:
 
     async def serve(self, reader, writer):
         task = asyncio.current_task()
-        if len(self.clients) >= 8:
+        if self.closing or len(self.clients) >= 8:
             writer.close()
             return
         self.clients.add(task)
+        self.writers.add(writer)
         queue = None
         try:
+            writer.transport.set_write_buffer_limits(high=4096, low=1024)
+            writer.get_extra_info("socket").setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
             peer = writer.get_extra_info("peername")[0]
             async with asyncio.timeout(5):
                 raw = await reader.readuntil(b"\r\n\r\n")
@@ -102,7 +110,7 @@ class Stream:
                 await writer.drain()
                 return
             writer.write((headers + "Transfer-Encoding: chunked\r\n\r\n").encode())
-            queue = asyncio.Queue(maxsize=32)
+            queue = asyncio.Queue(maxsize=6)
             for block in self.recent:
                 queue.put_nowait(block)
             self.queues.add(queue)
@@ -120,13 +128,33 @@ class Stream:
             if queue is not None:
                 self.queues.discard(queue)
             writer.close()
+            if queue is not None:
+                # End a live/slow stream without waiting to flush stale audio.
+                writer.transport.abort()
+            self.writers.discard(writer)
             self.clients.discard(task)
 
     async def close(self):
-        if self.server:
-            self.server.close()
-            await self.server.wait_closed()
-            self.server = None
+        # Share cleanup across Stop, monitor failures and helper shutdown.
+        if self.close_task is None:
+            self.close_task = asyncio.create_task(self.close_owned())
+        try:
+            await asyncio.shield(self.close_task)
+        except asyncio.CancelledError:
+            # Do not let a cancelled Start/watch leave capture running while
+            # Stop proceeds with the controller's already-detached stream.
+            await self.close_task
+            raise
+
+    async def close_owned(self):
+        self.closing = True
+        server, self.server = self.server, None
+        if server:
+            server.close()
+        # Python 3.12+ Server.wait_closed also waits for client transports.
+        # Close live readers before awaiting it, or Stop deadlocks forever.
+        for writer in tuple(self.writers):
+            writer.transport.abort()
         tasks = list(self.clients)
         if self.pump:
             tasks.append(self.pump)
@@ -136,5 +164,7 @@ class Stream:
         if self.encoder:
             await self.processes.end(self.encoder)
             self.encoder = None
+        if server:
+            await server.wait_closed()
         self.recent.clear()
         self.queues.clear()

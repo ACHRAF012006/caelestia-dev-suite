@@ -1,7 +1,7 @@
 {
   "id": "cast-audio",
   "name": "Cast Audio",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Cast a PipeWire output monitor to a local Google Cast receiver.",
   "type": "quickshell",
   "ui": "main.qml",

@@ -282,6 +282,116 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         writer.close()
         await writer.wait_closed()
 
+    async def test_stop_closes_a_live_http_reader_before_waiting_for_the_server(self):
+        stream = Stream(self.processes, "127.0.0.1", "127.0.0.1")
+        stream.server = await asyncio.start_server(stream.serve, "127.0.0.1", 0)
+        port = stream.server.sockets[0].getsockname()[1]
+        stream.encoder = await self.processes.spawn([sys.executable, "-c",
+            "import sys,time;sys.stdout.buffer.write(b'a'*4096);sys.stdout.flush();time.sleep(30)"])
+        encoder = stream.encoder
+        stream.pump = asyncio.create_task(stream.read_audio())
+        await asyncio.wait_for(stream.ready.wait(), 1)
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(f"GET {stream.path} HTTP/1.1\r\nHost: test\r\n\r\n".encode())
+        await writer.drain()
+        await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 1)
+        try:
+            # The reader deliberately stays connected: Stop must close it.
+            await asyncio.wait_for(stream.close(), 1.5)
+            self.assertIsNotNone(encoder.returncode)
+            self.assertFalse(stream.clients)
+            self.assertFalse(self.processes.children)
+            await asyncio.wait_for(reader.read(), 1)
+            # The listener is released for immediate reconnection.
+            replacement = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", port)
+            replacement.close(); await replacement.wait_closed()
+        finally:
+            writer.close(); await writer.wait_closed()
+            await stream.close()
+
+    async def test_stop_aborts_a_client_that_never_finishes_its_http_headers(self):
+        stream = Stream(self.processes, "127.0.0.1", "127.0.0.1")
+        stream.server = await asyncio.start_server(stream.serve, "127.0.0.1", 0)
+        port = stream.server.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET /"); await writer.drain()
+        async def accepted():
+            while not stream.clients: await asyncio.sleep(0)
+        try:
+            await asyncio.wait_for(accepted(), 1)
+            await asyncio.wait_for(stream.close(), .5)
+            self.assertFalse(stream.clients)
+            try:
+                self.assertEqual(await asyncio.wait_for(reader.read(), .5), b"")
+            except ConnectionResetError:
+                pass  # An aborted partial request may end with TCP reset.
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except ConnectionResetError:
+                pass  # Stop aborts the unfinished request instead of flushing it.
+            await stream.close()
+
+    async def test_remote_stop_timeout_does_not_delay_local_capture_shutdown(self):
+        controller = Controller(self.prefs, self.processes, lambda value: None)
+        controller.stream = AsyncMock()
+        controller.stream.url = "our-session"
+        stream = controller.stream
+        controller.receiver = {"host": "192.168.1.5", "name": "Speaker"}
+        remote_entered = asyncio.Event()
+        async def unreachable(*args):
+            remote_entered.set()
+            await asyncio.Event().wait()
+        controller.cast.stop_owned = unreachable
+        stopped = asyncio.create_task(controller.stop())
+        await asyncio.wait_for(remote_entered.wait(), 1)
+        await asyncio.sleep(.02)
+        stream.close.assert_awaited_once()
+        self.assertIsNone(controller.stream)
+        await asyncio.wait_for(stopped, 6)
+        self.assertEqual(controller.state, "Off")
+        self.assertIn("did not confirm", controller.message)
+
+    async def test_slow_receiver_buffering_is_not_abandoned_after_eight_polls(self):
+        controller = Controller(self.prefs, self.processes, lambda value: None)
+        stream = AsyncMock()
+        stream.url = "our-session"
+        stream.receiver_reads = 4096
+        idle = {"app_id": "CC1AD845", "player_state": "IDLE"}
+        buffered = {"app_id": "CC1AD845", "player_state": "BUFFERING", "content_id": stream.url}
+        playing = {**buffered, "player_state": "PLAYING"}
+        controller.cast.info = AsyncMock(side_effect=[idle, *([buffered] * 10), playing])
+        controller.cast.start = AsyncMock()
+        controller.cast.stop_owned = AsyncMock()
+        with patch("controller.Stream", return_value=stream), patch("controller.route", return_value="10.20.1.5"), \
+             patch("controller.audio.sources", new=AsyncMock(return_value=[{"id": "speaker", "name": "Speaker", "default": True, "monitor": "speaker.monitor"}])), \
+             patch("controller.asyncio.sleep", new=AsyncMock()):
+            await controller.start({"id": "speaker", "host": "10.20.0.8", "name": "Speaker"})
+        self.assertEqual(controller.state, "Casting")
+        self.assertEqual(controller.cast.info.await_count, 12)
+        await controller.close()
+
+    async def test_concurrent_cancelled_close_still_reaps_encoder_once(self):
+        stream = Stream(self.processes, "127.0.0.1", "127.0.0.1")
+        encoder = stream.encoder = object()
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def delayed_end(process):
+            entered.set()
+            await release.wait()
+        with patch.object(self.processes, "end", new=AsyncMock(side_effect=delayed_end)) as end:
+            first = asyncio.create_task(stream.close())
+            await entered.wait()
+            first.cancel()
+            second = asyncio.create_task(stream.close())
+            await asyncio.sleep(0)
+            self.assertFalse(first.done())
+            release.set()
+            results = await asyncio.gather(first, second, return_exceptions=True)
+            self.assertIsInstance(results[0], asyncio.CancelledError)
+            end.assert_awaited_once_with(encoder)
+            self.assertIsNone(stream.encoder)
+
 
     async def test_encoder_failure_cleans_stream_and_returns_error(self):
         controller = Controller(self.prefs, self.processes, lambda value: None)

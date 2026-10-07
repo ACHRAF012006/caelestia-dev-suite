@@ -106,9 +106,11 @@ class Controller:
                     raise Failure("Receiver already busy; stop its current session before casting")
                 self.stream = Stream(self.processes, route(receiver["host"]), receiver["host"], self.prefs.values["stream_port"])
                 await self.stream.start(self.source["monitor"], self.prefs.values["bitrate"])
-                self.status("Connecting…", "Waiting for receiver playback; buffering adds several seconds…")
+                self.status("Connecting…", "Waiting for receiver playback…")
                 await self.cast.start(receiver, self.stream.url)
-                for _ in range(8):
+                # Receivers can still be buffering after eight status polls.
+                # Retain the overall deadline rather than abandoning live audio.
+                while True:
                     info = await self.cast.info(receiver)
                     if (info.get("content_id") == self.stream.url and info.get("player_state") == "PLAYING"
                             and self.stream.receiver_reads > 0):
@@ -116,17 +118,17 @@ class Controller:
                     if info.get("content_id") == self.stream.url and info.get("idle_reason") == "ERROR":
                         raise Failure("Receiver rejected the audio stream. Check receiver network/media access; its Cast connection is working.")
                     await asyncio.sleep(1)
-                else:
-                    raise Failure("Stream failed: receiver did not begin playback; check incoming LAN access")
                 if self.prefs.values["remember"]:
                     self.prefs.save({"last": receiver["id"]})
                 self.update_volume(info)
-                self.status("Casting", "Live MP3 · 48 kHz · stereo · buffered, not zero-latency")
+                self.status("Casting", "Live MP3 · short local buffer · receiver delay varies")
                 self.monitor = asyncio.create_task(self.watch())
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             message = self.error(exc)
+            if isinstance(exc, TimeoutError) and self.stream and self.stream.receiver_reads:
+                message = "Speaker received audio but did not finish buffering within 60 seconds"
             if (self.stream and self.stream.url and not self.stream.failure and not self.stream.receiver_reads
                     and (isinstance(exc, TimeoutError) or "timed out" in message or "did not begin playback" in message)):
                 message = (f"Speaker did not request audio from {self.stream.address}:{self.stream.port}. "
@@ -176,28 +178,39 @@ class Controller:
 
     async def cleanup(self):
         stream, receiver = self.stream, self.receiver
+        self.stream = self.receiver = self.source = None
+        async def stop_receiver():
+            if not receiver:
+                return True
+            try:
+                async with asyncio.timeout(5):
+                    await self.cast.stop_owned(receiver, stream.url)
+                return True
+            except Exception:
+                return False
         if stream:
-            # End capture and close HTTP immediately, even if the receiver is lost.
-            await stream.close()
-            if receiver:
-                try:
-                    async with asyncio.timeout(10):
-                        await self.cast.stop_owned(receiver, stream.url)
-                except Exception:
-                    pass
-        self.stream = None
-        self.receiver = self.source = None
+            # Issue the remote command while its media is still active. Local
+            # capture/HTTP cleanup never waits for a remote status round trip.
+            remote = asyncio.create_task(stop_receiver())
+            try:
+                await stream.close()
+                return await remote
+            finally:
+                if not remote.done():
+                    remote.cancel()
+                await asyncio.gather(remote, return_exceptions=True)
+        return True
 
     async def stop(self):
         self.auto_pending = False
+        self.status("Stopping…", "Stopping capture and disconnecting receiver…")
         for task in (self.operation, self.monitor):
             if task and not task.done():
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
         self.operation = self.monitor = None
-        self.status("Stopping…", "Stopping capture and disconnecting receiver…")
-        await self.cleanup()
-        self.status("Off", "Not connected")
+        confirmed = await self.cleanup()
+        self.status("Off", "Not connected" if confirmed else "Audio stopped locally; receiver did not confirm Stop")
 
     async def control(self, action, value):
         try:
