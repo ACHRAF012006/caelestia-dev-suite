@@ -6,7 +6,8 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import audio
@@ -17,6 +18,8 @@ from controller import Controller
 from processes import Processes
 from safety import Failure, Preferences, local_ip
 from stream import Stream
+from hls import HlsStream, memory_root, reap_abandoned
+from cast_live import checked_url, load as load_live
 
 
 class TempCase(unittest.IsolatedAsyncioTestCase):
@@ -41,6 +44,122 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(prefs.values["last"], "")
         with self.assertRaises(Failure):
             prefs.save({"command": "anything"})
+
+    async def test_live_mode_migrates_old_preferences_and_rejects_other_formats(self):
+        self.assertEqual(Preferences.validate({"bitrate": 192})["format"], "hls")
+        self.prefs.save({"format": "mp3"})
+        self.assertEqual(Preferences().values["format"], "mp3")
+        for value in ("wav", [], None):
+            with self.assertRaises(Failure):
+                self.prefs.save({"format": value})
+
+    async def test_live_sender_only_accepts_private_component_manifest_urls(self):
+        valid = "http://192.168.1.2:48200/" + "a" * 48 + "/live.m3u8"
+        self.assertEqual(checked_url(valid), valid)
+        for value in (valid.replace("192.168.1.2", "8.8.8.8"), valid.replace("http:", "https:"),
+                      valid + "?token=other", valid.replace("48200", "80"), valid.replace("live.m3u8", "settings.json"),
+                      valid.replace("192.168.1.2", "user@192.168.1.2")):
+            with self.assertRaises(Failure):
+                checked_url(value)
+
+    async def test_live_sender_can_load_from_backdrop_without_a_media_status_reply(self):
+        url = "http://192.168.1.2:48200/" + "a" * 48 + "/live.m3u8"
+        cast = MagicMock()
+        cast.status.app_id = "E8C28D3C"
+        cast.media_controller.status.player_state = "UNKNOWN"
+        cast.media_controller.status.content_id = ""
+        def accepted(value, *args, **kwargs):
+            cast.media_controller.status.content_id = value
+        cast.media_controller.play_media.side_effect = accepted
+        with patch.dict(sys.modules, {"catt.discovery": SimpleNamespace(get_cast_with_ip=lambda *_: cast)}):
+            load_live("192.168.1.5", url)
+        cast.media_controller.update_status.assert_not_called()
+        cast.media_controller.play_media.assert_called_once_with(url, "application/vnd.apple.mpegurl", title="Caelestia system audio", stream_type="LIVE")
+        cast.disconnect.assert_called_once()
+
+    async def test_live_sender_preserves_a_busy_default_receiver(self):
+        url = "http://192.168.1.2:48200/" + "a" * 48 + "/live.m3u8"
+        cast = MagicMock()
+        cast.status.app_id = "CC1AD845"
+        cast.media_controller.status.player_state = "PLAYING"
+        cast.media_controller.update_status.side_effect = lambda **kwargs: kwargs["callback_function"](True, {})
+        with patch.dict(sys.modules, {"catt.discovery": SimpleNamespace(get_cast_with_ip=lambda *_: cast)}):
+            with self.assertRaisesRegex(Failure, "busy"):
+                load_live("192.168.1.5", url)
+        cast.media_controller.play_media.assert_not_called()
+        cast.disconnect.assert_called_once()
+
+    async def test_hls_snapshots_bound_history_and_reject_external_playlist_paths(self):
+        stream = HlsStream(self.processes, "127.0.0.1", "127.0.0.1")
+        stream.directory = Path(self.temp.name) / "segments"
+        stream.directory.mkdir()
+        folder = stream.directory
+        self.addAsyncCleanup(stream.close)
+        for index in range(18):
+            name = f"segment-{index}.ts"
+            (folder/name).write_bytes(b"encoded audio")
+            names = [f"segment-{n}.ts" for n in range(max(0, index-5), index+1)]
+            (folder/"live.m3u8").write_text("#EXTM3U\n" + "\n".join(names) + "\n")
+            stream.read_snapshot()
+        self.assertTrue(stream.ready.is_set())
+        self.assertEqual(len(stream.segments), 12)
+        self.assertNotIn("segment-0.ts", stream.segments)
+        previous = stream.playlist
+        for name in ("../settings.json", "http://192.168.1.2/private.ts", "segment-999.ts"):
+            (folder/"live.m3u8").write_text("#EXTM3U\n" + name + "\n")
+            with self.assertRaises((Failure, FileNotFoundError)):
+                stream.read_snapshot()
+            self.assertEqual(stream.playlist, previous)
+        await stream.close()
+        self.assertFalse(folder.exists())
+
+    async def test_hls_http_serves_only_the_current_session_with_finite_responses(self):
+        stream = HlsStream(self.processes, "127.0.0.1", "127.0.0.1")
+        stream.playlist = b"#EXTM3U\nsegment-1.ts\n"
+        stream.segments["segment-1.ts"] = b"encoded audio"
+        stream.server = await asyncio.start_server(stream.serve, "127.0.0.1", 0)
+        self.addAsyncCleanup(stream.close)
+        port = stream.server.sockets[0].getsockname()[1]
+        async def fetch(path, method="GET"):
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            try:
+                writer.write(f"{method} {path} HTTP/1.1\r\nHost: test\r\n\r\n".encode())
+                await writer.drain()
+                return await asyncio.wait_for(reader.read(), 1)
+            finally:
+                writer.close(); await writer.wait_closed()
+        manifest = await fetch(stream.path)
+        self.assertIn(b"application/vnd.apple.mpegurl", manifest)
+        self.assertTrue(manifest.endswith(stream.playlist))
+        segment = await fetch(stream.prefix + "segment-1.ts")
+        self.assertIn(b"video/mp2t", segment)
+        self.assertTrue(segment.endswith(b"encoded audio"))
+        self.assertEqual(stream.receiver_reads, len(b"encoded audio"))
+        self.assertFalse((await fetch(stream.path, "HEAD")).split(b"\r\n\r\n", 1)[1])
+        for path in ("/", stream.prefix + "../settings.json", stream.prefix + "segment-999.ts", "/other/segment-1.ts"):
+            self.assertIn(b"404", (await fetch(path)).split(b"\r\n",1)[0])
+        self.assertIn(b"405", (await fetch(stream.path, "POST")).split(b"\r\n",1)[0])
+        stream.receiver, stream.address = "192.168.1.5", "192.168.1.2"
+        self.assertIn(b"404", (await fetch(stream.path)).split(b"\r\n",1)[0])
+
+    async def test_hls_never_falls_back_to_a_disk_directory(self):
+        with patch("hls.Path.read_text", return_value="1 2 0:3 / /dev/shm rw - ext4 /dev/sda1 rw"):
+            with self.assertRaisesRegex(Failure, "tmpfs"):
+                memory_root()
+
+    async def test_abandoned_live_buffers_preserve_active_or_unrecognized_files(self):
+        root = Path(self.temp.name)
+        prefix = f"cast-audio-{os.getuid()}-"
+        abandoned = root / (prefix + "99999999-dead")
+        abandoned.mkdir(); (abandoned/"segment-1.ts").write_bytes(b"old audio")
+        active = root / (prefix + str(os.getpid()) + "-active")
+        active.mkdir(); (active/"segment-1.ts").write_bytes(b"current audio")
+        unrelated = root / (prefix + "99999999-other")
+        unrelated.mkdir(); (unrelated/"keep.txt").write_bytes(b"unowned")
+        reap_abandoned(root)
+        self.assertFalse(abandoned.exists())
+        self.assertTrue((active/"segment-1.ts").exists())
+        self.assertTrue((unrelated/"keep.txt").exists())
 
     async def test_manual_devices_are_persisted_and_deduplicated_with_discovery(self):
         self.prefs.save({"manual_devices": [{"name": "VLAN Speaker", "host": "192.168.20.8"}], "stream_port": 48200})
@@ -107,7 +226,7 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         controller.cast.info = AsyncMock(return_value={"app_id": "CC1AD845", "player_state": "IDLE"})
         controller.cast.start = AsyncMock(side_effect=Failure("catt timed out"))
         controller.cast.stop_owned = AsyncMock()
-        with patch("controller.Stream", return_value=stream), patch("controller.route", return_value=stream.address), \
+        with patch("controller.HlsStream", return_value=stream), patch("controller.route", return_value=stream.address), \
              patch("controller.audio.sources", new=AsyncMock(return_value=[{"id": "speaker", "name": "Speaker", "default": True, "monitor": "speaker.monitor"}])):
             await controller.start({"host": "10.20.0.8", "name": "Speaker"})
         self.assertEqual(controller.state, "Error")
@@ -127,7 +246,7 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
             {"app_id": "CC1AD845", "player_state": "IDLE", "content_id": stream.url, "idle_reason": "ERROR"}])
         controller.cast.start = AsyncMock()
         controller.cast.stop_owned = AsyncMock()
-        with patch("controller.Stream", return_value=stream), patch("controller.route", return_value="10.20.1.5"), \
+        with patch("controller.HlsStream", return_value=stream), patch("controller.route", return_value="10.20.1.5"), \
              patch("controller.audio.sources", new=AsyncMock(return_value=[{"id": "speaker", "name": "Speaker", "default": True, "monitor": "speaker.monitor"}])):
             await controller.start({"host": "10.20.0.8", "name": "Speaker"})
         self.assertEqual(controller.state, "Error")
@@ -172,8 +291,9 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
             response = json.loads(await reader.readline())
             writer.close(); await writer.wait_closed()
             return response
-        reply = await send({"action": "settings", "values": {"manual_devices": [{"name": "Speaker", "host": "10.2.0.5"}]}})
+        reply = await send({"action": "settings", "values": {"format": "mp3", "manual_devices": [{"name": "Speaker", "host": "10.2.0.5"}]}})
         self.assertTrue(reply["ok"])
+        self.assertEqual(reply["snapshot"]["settings"]["format"], "mp3")
         self.assertEqual(reply["snapshot"]["devices"][0]["host"], "10.2.0.5")
         controller.state = "Casting"
         reply = await send({"action": "settings", "values": {"bitrate": 320}})
@@ -364,7 +484,7 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         controller.cast.info = AsyncMock(side_effect=[idle, *([buffered] * 10), playing])
         controller.cast.start = AsyncMock()
         controller.cast.stop_owned = AsyncMock()
-        with patch("controller.Stream", return_value=stream), patch("controller.route", return_value="10.20.1.5"), \
+        with patch("controller.HlsStream", return_value=stream), patch("controller.route", return_value="10.20.1.5"), \
              patch("controller.audio.sources", new=AsyncMock(return_value=[{"id": "speaker", "name": "Speaker", "default": True, "monitor": "speaker.monitor"}])), \
              patch("controller.asyncio.sleep", new=AsyncMock()):
             await controller.start({"id": "speaker", "host": "10.20.0.8", "name": "Speaker"})

@@ -85,6 +85,11 @@ class Cast:
     async def start(self, receiver, url):
         if self.busy(await self.info(receiver)):
             raise Failure("Receiver already busy; stop its current session before casting")
+        if url.endswith("/live.m3u8"):
+            # Send our own HLS URL directly; no yt-dlp extraction or rewritten
+            # live position is needed for an internally generated playlist.
+            await self.processes.run(["cast-live", local_ip(receiver["host"]), url], 20)
+            return
         await self.command(receiver, "cast", "--force-default", "--no-subs", "--no-playlist",
                            "--stream-type", "LIVE", "--title", "Caelestia system audio", url, timeout=35)
 

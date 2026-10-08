@@ -11,6 +11,8 @@ from safety import Failure
 
 
 class Stream:
+    label = "Live MP3 · receiver delay varies"
+
     def __init__(self, processes, address, receiver, port=0):
         self.processes, self.address, self.receiver = processes, address, receiver
         self.path = "/" + secrets.token_hex(24) + "/live.mp3"

@@ -21,10 +21,12 @@ class Processes:
         self.environment.update(NO_PROXY="*", no_proxy="*")
 
     async def spawn(self, args, capture=False):
-        cast_command = args[0] == "catt"
+        cast_command = args[0] in ("catt", "cast-live")
         # Installed console scripts retain staging shebangs; invoke the module
         # with this sidecar's relocated environment instead.
-        if cast_command and importlib.util.find_spec("catt") is not None:
+        if args[0] == "cast-live":
+            args = [sys.executable, "-B", str(Path(__file__).with_name("cast_live.py")), *args[1:]]
+        elif cast_command and importlib.util.find_spec("catt") is not None:
             args = [sys.executable, "-m", "catt.cli", *args[1:]]
         executable = shutil.which(args[0])
         if executable is None:

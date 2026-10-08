@@ -6,6 +6,7 @@ import audio
 from cast import Cast, route, merge_devices
 from safety import Failure, text
 from stream import Stream
+from hls import HlsStream
 
 
 class Controller:
@@ -104,7 +105,8 @@ class Controller:
                 # Check before capturing; Cast.start checks again before loading.
                 if self.cast.busy(await self.cast.info(receiver)):
                     raise Failure("Receiver already busy; stop its current session before casting")
-                self.stream = Stream(self.processes, route(receiver["host"]), receiver["host"], self.prefs.values["stream_port"])
+                stream_type = HlsStream if self.prefs.values["format"] == "hls" else Stream
+                self.stream = stream_type(self.processes, route(receiver["host"]), receiver["host"], self.prefs.values["stream_port"])
                 await self.stream.start(self.source["monitor"], self.prefs.values["bitrate"])
                 self.status("Connecting…", "Waiting for receiver playback…")
                 await self.cast.start(receiver, self.stream.url)
@@ -121,7 +123,7 @@ class Controller:
                 if self.prefs.values["remember"]:
                     self.prefs.save({"last": receiver["id"]})
                 self.update_volume(info)
-                self.status("Casting", "Live MP3 · short local buffer · receiver delay varies")
+                self.status("Casting", self.stream.label)
                 self.monitor = asyncio.create_task(self.watch())
         except asyncio.CancelledError:
             raise
@@ -249,7 +251,7 @@ class Controller:
             try:
                 if self.state not in ("Off", "Error"):
                     raise Failure("Stop casting before changing settings")
-                if not isinstance(changes, dict) or set(changes) - {"source", "bitrate", "remember", "reconnect", "discovery_timeout", "manual_devices", "stream_port"}:
+                if not isinstance(changes, dict) or set(changes) - {"source", "format", "bitrate", "remember", "reconnect", "discovery_timeout", "manual_devices", "stream_port"}:
                     raise Failure("Invalid settings")
                 self.prefs.save(changes)
                 self.devices = merge_devices([device for device in self.devices if not device.get("manual")], self.prefs.values["manual_devices"])

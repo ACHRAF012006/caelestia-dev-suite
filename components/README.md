@@ -3,7 +3,7 @@
 Each folder contains an independently installed schema-1 component.
 
 - **TouchDeck 0.1.1** (`touchdeck/`): touchscreen dashboard, PipeWire mixer and MPRIS media controls.
-- **[Cast Audio 0.3.1](cast-audio/README.md)** (`cast-audio/`): Expandable Caelestia KDE receiver menu with a separate Settings app, manual receiver IPs and fixed stream ports. Requires Dev Manager 0.5+ for automatic panel integration. Casts a PipeWire output monitor to a local/routed Google Cast receiver. Requires a compatible Caelestia shell and Python; installation prepares private catt dependencies and known audio tools.
+- **[Cast Audio 0.4.0](cast-audio/README.md)** (`cast-audio/`): Live AAC/HLS and MP3 compatibility casting from a themed, expandable Caelestia KDE receiver menu with a separate Settings app, manual receiver IPs and fixed stream ports. Requires Dev Manager 0.5+ for automatic panel integration. Casts a PipeWire output monitor to a local/routed Google Cast receiver. Requires a compatible Caelestia shell and Python; installation prepares private catt dependencies and known audio tools.
 
 Add future components as `components/<id>/` with manifest.json, README.md, source and SVG assets.
 Keep dependencies and permissions declared. Never commit environments, user data, credentials, symlinks or installer hooks.

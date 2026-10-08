@@ -41,7 +41,7 @@ class SettingsServer:
                         raise Failure("Stop casting before changing settings")
                     # Validate before dispatch so callers receive an explicit failure.
                     changes = request.get("values")
-                    if not isinstance(changes, dict) or set(changes) - {"source", "bitrate", "remember", "reconnect", "discovery_timeout", "manual_devices", "stream_port"}:
+                    if not isinstance(changes, dict) or set(changes) - {"source", "format", "bitrate", "remember", "reconnect", "discovery_timeout", "manual_devices", "stream_port"}:
                         raise Failure("Invalid settings")
                     expected = self.controller.prefs.validate({**self.controller.prefs.values, **changes})
                     await self.dispatch(request)
