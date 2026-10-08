@@ -8,6 +8,7 @@ import tempfile
 
 
 QML = '''import QtQuick
+import QtTest
 import Quickshell
 import Caelestia
 import qs.components
@@ -21,7 +22,7 @@ ShellRoot {
     property alias card: cardItem
     property int phase: 0
     property bool failed: false
-    FloatingWindow { id: canvas; visible: false; implicitWidth: 480; implicitHeight: 260 }
+    FloatingWindow { id: canvas; visible: true; implicitWidth: 480; implicitHeight: 600 }
     Binding { target: ShellState; property: "shellRoot"; value: root }
     DrawerVisibilities { id: drawers; utilities: true }
     Toggles {
@@ -31,6 +32,7 @@ ShellRoot {
         popouts: null
         width: 480
     }
+    TestCase { id: pointer; when: false }
     QtObject {
         id: fakeCast
         property var snapshot: ({state: "Off"})
@@ -55,6 +57,11 @@ ShellRoot {
         }
         return null;
     }
+    function findChoice(item, identity) {
+        if (item.objectName === "castAudioSourceChoice" && item.modelData.id === identity) return item;
+        for (let child of item.children || []) { const found = findChoice(child, identity); if (found) return found; }
+        return null;
+    }
     Component.onCompleted: {
         console.log("CAST_MENU_START");
         GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: true}];
@@ -75,13 +82,25 @@ ShellRoot {
                 if (!menu) { Qt.quit(); return; }
                 root.check(!menu.expanded, "menu starts collapsed");
                 root.findItem(menu, "castAudioExpand").clicked();
-                fakeCast.snapshot = {state: "Off", message: "Choose a receiver", devices: [{id: "manual:192.168.20.8", host: "192.168.20.8", name: "VLAN Speaker", manual: true, supported: true}], sources: [{id: "app:19:player", kind: "application", name: "Player", detail: "Music"}], settings: {}};
+                fakeCast.snapshot = {state: "Off", message: "Choose a receiver", devices: [{id: "manual:192.168.20.8", host: "192.168.20.8", name: "VLAN Speaker", manual: true, supported: true}], sources: [{id: "app:19:player", kind: "application", name: "Player", detail: "Music"}, {id: "app:20:browser", kind: "application", name: "Browser", detail: "Video"}], settings: {}};
             } else if (root.phase === 1) {
                 root.check(menu && menu.expanded, "row expands without opening a window");
                 root.findItem(menu, "castAudioApp").clicked();
                 root.check(fakeCast.lastCommand.action === "settings" && fakeCast.lastCommand.values.source === "app:19:player", "app selection saves only the selected stream");
-                root.findItem(menu, "castAudioLatency").activated(1);
-                root.check(fakeCast.lastCommand.values.latency === "balanced", "delay profile can be changed inline");
+                fakeCast.snapshot = Object.assign({}, fakeCast.snapshot, {settings: {source: "app:19:player"}});
+                root.check(!root.findItem(menu, "castAudioSource").visible, "panel uses no external source popup");
+                root.check(!root.findItem(menu, "castAudioLatency"), "advanced tuning stays in Settings");
+                root.check(menu.implicitHeight < 300, "idle Cast panel stays compact");
+                const selector = root.findItem(menu, "castAudioSourceExpand");
+                pointer.mouseClick(selector);
+                pointer.mouseClick(selector);
+                root.check(menu.expanded && drawers.utilities, "opening source choices preserves drawer");
+            } else if (root.phase === 2) {
+                const choice = root.findChoice(menu, "app:20:browser");
+                root.check(choice && choice.visible && choice.enabled && choice.height > 0, "inline source choice is visible");
+                if (choice) pointer.mouseClick(choice);
+                root.check(fakeCast.lastCommand.values.source === "app:20:browser", "pointer selects a different inline source");
+                root.check(menu.expanded && drawers.utilities, "selection keeps Quick Toggles open");
                 const receiver = root.findItem(menu, "castAudioReceiver");
                 root.check(receiver !== null, "receiver list is embedded in row");
                 if (receiver) receiver.clicked();
@@ -92,18 +111,18 @@ ShellRoot {
                 fakeCast.openMenuRequested();
                 root.check(drawers.utilities, "IPC opens the Quick Toggles drawer");
                 fakeCast.snapshot = {state: "Casting", scanning: true, receiver: "VLAN Speaker", devices: [], settings: {}};
-            } else if (root.phase === 2) {
+            } else if (root.phase === 3) {
                 root.check(menu && menu.state.state === "Casting", "live state stays in embedded menu");
                 root.check(!root.findItem(menu, "castAudioRefresh").visible, "active sessions never show a scanning action");
                 GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: false}];
-            } else if (root.phase === 3) {
+            } else if (root.phase === 4) {
                 root.check(!menu, "Nexus setting hides row");
                 GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: true}];
-            } else if (root.phase === 4) {
+            } else if (root.phase === 5) {
                 root.check(menu !== null, "Nexus setting restores row");
                 PluginLoader.pluginInstances = {};
                 PluginLoader.loadedCount = 0;
-            } else if (root.phase === 5) {
+            } else if (root.phase === 6) {
                 root.check(!menu, "unloading plugin removes row");
                 if (!root.failed) console.log("CAST_MENU_PASS");
                 Qt.quit();
@@ -154,7 +173,7 @@ def main():
             print("Probe exit code:", result.returncode)
             print(output)
             raise SystemExit("Cast Quick Toggle probe failed")
-        print("PASS: host QML compiles; expandable row, embedded IP receiver selection, Settings action, drawer opening, Nexus visibility and unload work.")
+        print("PASS: host QML compiles; compact row, pointer-driven inline source choices without popups, embedded IP receiver selection, Settings action, drawer opening, Nexus visibility and unload work.")
 
 
 if __name__ == "__main__":

@@ -21,6 +21,8 @@ class Stream:
         self.port = port
         self.server = self.encoder = self.pump = None
         self.capture = None
+        self.diagnostics = None
+        self.encoder_errors = b''
         self.queues, self.clients = set(), set()
         self.writers = set()
         self.closing = False
@@ -57,8 +59,11 @@ class Stream:
         prefix = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin']
         if not isinstance(source, dict) or source.get('kind') != 'application':
             monitor = source['monitor'] if isinstance(source, dict) else source
-            return await self.processes.spawn(prefix + ['-f', 'pulse', '-sample_rate', '48000',
-                '-channels', '2', '-fragment_size', '3840', '-i', monitor] + options, capture=True)
+            encoder = await self.processes.spawn(prefix + ['-f', 'pulse', '-sample_rate', '48000',
+                '-channels', '2', '-fragment_size', '3840', '-probesize', '32', '-analyzeduration', '0',
+                '-i', monitor] + options, capture=True, diagnostics=True)
+            self.diagnostics = asyncio.create_task(self.read_encoder_errors(encoder))
+            return encoder
         index = source.get('stream_index')
         if type(index) is not int or index < 0:
             raise Failure('Invalid application audio stream')
@@ -73,13 +78,31 @@ class Stream:
                 capture=True, stdout=write_fd)
             os.close(write_fd)
             write_fd = None
-            return await self.processes.spawn(prefix + ['-f', 's16le', '-ar', '48000', '-ac', '2',
+            encoder = await self.processes.spawn(prefix + ['-f', 's16le', '-ar', '48000', '-ac', '2',
                 '-probesize', '32', '-analyzeduration', '0', '-i', 'pipe:0'] + options,
-                capture=True, stdin=read_fd)
+                capture=True, stdin=read_fd, diagnostics=True)
+            self.diagnostics = asyncio.create_task(self.read_encoder_errors(encoder))
+            return encoder
         finally:
             os.close(read_fd)
             if write_fd is not None:
                 os.close(write_fd)
+
+    async def read_encoder_errors(self, encoder):
+        # Drain stderr continuously so an error pipe cannot block capture.
+        # Retain only a bounded tail in memory, never expose raw device/path data.
+        while block := await encoder.stderr.read(1024):
+            self.encoder_errors = (self.encoder_errors + block)[-4096:]
+
+    def encoder_failure(self, codec):
+        errors = self.encoder_errors.lower()
+        if b'no space left' in errors:
+            return "Live audio memory buffer is full; free memory and retry"
+        if b'unknown encoder' in errors or b'encoder not found' in errors:
+            return "FFmpeg lacks the " + codec + " encoder; reinstall FFmpeg"
+        if any(word in errors for word in (b'no such process', b'no such file', b'connection refused', b'input/output error')):
+            return "Audio source unavailable; refresh sources and reconnect"
+        return "FFmpeg stopped; refresh the audio source and retry"
 
     async def read_audio(self):
         try:
@@ -96,7 +119,7 @@ class Stream:
                         queue.put_nowait(None)
                     else:
                         queue.put_nowait(block)
-            self.failure = "Stream failed: FFmpeg stopped; check output monitor and libmp3lame support"
+            self.failure = self.encoder_failure("MP3")
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -192,6 +215,10 @@ class Stream:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        if self.diagnostics:
+            self.diagnostics.cancel()
+            await asyncio.gather(self.diagnostics, return_exceptions=True)
+            self.diagnostics = None
         if self.encoder:
             await self.processes.end(self.encoder)
             self.encoder = None
@@ -200,5 +227,6 @@ class Stream:
             self.capture = None
         if server:
             await server.wait_closed()
+        self.encoder_errors = b''
         self.recent.clear()
         self.queues.clear()

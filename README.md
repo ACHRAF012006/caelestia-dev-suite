@@ -5,7 +5,7 @@ Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE P
 ## Repository layout
 
 - **`caelestia-dev-manager/`** — Dev Manager 0.5.1, installer, documentation and tests.
-- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 and Cast Audio 0.5.0 are included.
+- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 and Cast Audio 0.5.1 are included.
 
 The manager handles installation and lifecycle. Components continue running after it closes.
 

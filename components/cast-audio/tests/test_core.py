@@ -105,13 +105,46 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(stream.segments), 24)
         self.assertNotIn("segment-0.ts", stream.segments)
         previous = stream.playlist
-        for name in ("../settings.json", "http://192.168.1.2/private.ts", "segment-999.ts"):
+        for name in ("../settings.json", "http://192.168.1.2/private.ts"):
             (folder/"live.m3u8").write_text("#EXTM3U\n" + name + "\n")
             with self.assertRaises((Failure, FileNotFoundError)):
                 stream.read_snapshot()
             self.assertEqual(stream.playlist, previous)
         await stream.close()
         self.assertFalse(folder.exists())
+
+    async def test_rotating_playlist_retries_missing_segment_without_partial_publish(self):
+        stream = HlsStream(self.processes, "127.0.0.1", "127.0.0.1", latency="fast")
+        stream.directory = Path(self.temp.name) / "segments"
+        stream.directory.mkdir()
+        self.addAsyncCleanup(stream.close)
+        (stream.directory / "segment-1.ts").write_bytes(b"first")
+        manifest = stream.directory / "live.m3u8"
+        manifest.write_text("#EXTM3U\nsegment-1.ts\n")
+        stream.read_snapshot()
+        old_playlist, old_time = stream.playlist, stream.last_audio
+        (stream.directory / "segment-2.ts").write_bytes(b"second")
+        manifest.write_text("#EXTM3U\nsegment-2.ts\nsegment-3.ts\n")
+        stream.read_snapshot()
+        self.assertEqual(stream.playlist, old_playlist)
+        self.assertEqual(stream.last_audio, old_time)
+        self.assertNotIn("segment-2.ts", stream.segments)
+        self.assertFalse(stream.failure)
+        (stream.directory / "segment-3.ts").write_bytes(b"third")
+        stream.read_snapshot()
+        self.assertIn(b"segment-3.ts", stream.playlist)
+        self.assertIn("segment-2.ts", stream.segments)
+        self.assertGreater(stream.last_audio, old_time)
+
+    async def test_encoder_error_drain_is_bounded_and_diagnostics_do_not_expose_raw_data(self):
+        stream = Stream(self.processes, "127.0.0.1", "127.0.0.1")
+        encoder = SimpleNamespace(stderr=asyncio.StreamReader())
+        encoder.stderr.feed_data(b"private-device" * 1024 + b" No space left on device")
+        encoder.stderr.feed_eof()
+        await stream.read_encoder_errors(encoder)
+        self.assertEqual(len(stream.encoder_errors), 4096)
+        self.assertIn("memory buffer is full", stream.encoder_failure("AAC"))
+        self.assertNotIn("private-device", stream.encoder_failure("AAC"))
 
     async def test_subsecond_live_playlist_uses_valid_target_and_does_not_reread_unchanged_audio(self):
         stream = HlsStream(self.processes, "127.0.0.1", "127.0.0.1")

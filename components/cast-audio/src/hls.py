@@ -79,17 +79,37 @@ class HlsStream(Stream):
                 '-hls_segment_options', 'mpegts_copyts=1',
                 '-hls_segment_filename', str(self.directory/'segment-%d.ts'), str(self.directory/'live.m3u8')])
             self.pump = asyncio.create_task(self.refresh_audio())
-            await asyncio.wait_for(self.ready.wait(), 12)
+            await self.wait_ready()
             if self.failure:
                 raise Failure(self.failure)
         except TimeoutError:
-            raise Failure('Live audio unavailable: FFmpeg did not produce segments; try MP3 in Settings') from None
+            raise Failure('No live audio from the selected source. Resume playback or choose another source and retry.') from None
         except OSError as error:
             if error.errno == errno.EADDRINUSE:
                 raise Failure(f'Audio stream port {self.port} is in use; choose another port in Settings') from None
             raise Failure('Live stream could not create its private memory buffer or bind the receiver route') from None
 
+    async def wait_ready(self):
+        # Allow a slow but progressing encoder to fill its live window. Do not
+        # extend the deadline indefinitely when an input stops delivering PCM.
+        deadline = time.monotonic() + 20
+        while not self.ready.is_set():
+            try:
+                await asyncio.wait_for(self.ready.wait(), 1)
+            except TimeoutError:
+                if time.monotonic() >= deadline or time.monotonic() - self.last_audio > 12:
+                    raise TimeoutError from None
+
     def read_snapshot(self):
+        try:
+            self.read_complete_snapshot()
+        except FileNotFoundError:
+            # FFmpeg atomically replaces the playlist and deletes old segments
+            # concurrently. Keep the last complete snapshot and retry next tick;
+            # never publish a partial cache or count the race as fresh audio.
+            return
+
+    def read_complete_snapshot(self):
         path = no_links(self.directory/'live.m3u8')
         if not path.exists():
             return
@@ -128,7 +148,7 @@ class HlsStream(Stream):
             while self.encoder.returncode is None:
                 self.read_snapshot()
                 await asyncio.sleep(.1)
-            self.failure = 'Stream failed: FFmpeg stopped; check audio output and AAC support'
+            self.failure = self.encoder_failure('AAC')
         except asyncio.CancelledError:
             raise
         except Exception as error:

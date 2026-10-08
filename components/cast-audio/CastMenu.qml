@@ -16,7 +16,7 @@ Rectangle {
     readonly property string statusText: casting ? qsTr("Casting to ") + state.receiver : state.state === "Connecting…" ? qsTr("Connecting to ") + state.receiver : state.state === "Stopping…" ? qsTr("Disconnecting…") : state.state === "Error" ? qsTr("Needs attention") : qsTr("Choose a speaker")
     objectName: "castAudioMenu"
     implicitWidth: 300
-    implicitHeight: layout.implicitHeight + 20
+    implicitHeight: layout.implicitHeight + 16
     radius: Tokens.rounding.large
     color: theme.surface
     border.width: 1
@@ -31,7 +31,7 @@ Rectangle {
     ColumnLayout {
         id: layout
         anchors.fill: parent
-        anchors.margins: 10
+        anchors.margins: 8
         spacing: 0
         RowLayout {
             Layout.fillWidth: true
@@ -39,7 +39,7 @@ Rectangle {
             ActionButton {
                 objectName: "castAudioExpand"
                 Layout.fillWidth: true
-                implicitHeight: 54
+                implicitHeight: 44
                 flat: true
                 Accessible.name: root.expanded ? qsTr("Collapse Cast receivers") : qsTr("Choose Cast receiver")
                 onClicked: root.controller.setMenuExpanded(!root.expanded)
@@ -80,62 +80,40 @@ Rectangle {
                 anchors.right: parent.right
                 y: 8
                 height: implicitHeight
-                spacing: 10
+                spacing: 6
                 Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.theme.outline }
-                RowLayout {
-                    Layout.fillWidth: true
-                    visible: root.idle
-                    CastText { Layout.fillWidth: true; text: qsTr("What to cast"); font.weight: Font.DemiBold }
-                    ActionButton { objectName: "castAudioRefreshApps"; text: qsTr("Update apps"); flat: true; onClicked: root.controller.send({action: "refresh-audio"}) }
-                }
                 SourcePicker {
+                    compact: true
                     Layout.fillWidth: true
                     visible: root.idle
                     sources: root.state.sources || []
                     selectedId: (root.state.settings || {}).source || "default"
                     onChosen: identity => root.controller.send({action: "settings", values: {source: identity}})
                 }
-                Controls.ComboBox {
-                    objectName: "castAudioLatency"
-                    Layout.fillWidth: true
-                    visible: root.idle && (root.state.settings || {}).format !== "mp3"
-                    model: [qsTr("Fast · lowest delay"), qsTr("Balanced · more headroom")]
-                    currentIndex: (root.state.settings || {}).latency === "balanced" ? 1 : 0
-                    palette.button: root.theme.raised
-                    palette.buttonText: root.theme.foreground
-                    palette.window: root.theme.card
-                    palette.windowText: root.theme.foreground
-                    palette.highlight: root.theme.accent
-                    palette.highlightedText: root.theme.accentText
-                    onActivated: index => root.controller.send({action: "settings", values: {latency: index === 0 ? "fast" : "balanced"}})
-                }
-                Rectangle {
+                CastText {
                     Layout.fillWidth: true
                     visible: !root.idle
-                    implicitHeight: sharing.implicitHeight + 24
-                    radius: 12
-                    color: root.theme.selected
-                    ColumnLayout {
-                        id: sharing
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12
-                        spacing: 4
-                        CastText { text: qsTr("NOW SHARING"); font.pixelSize: 10; font.letterSpacing: 1; color: root.theme.selectedText }
-                        CastText { Layout.fillWidth: true; text: root.state.source_name || qsTr("Desktop audio"); font.weight: Font.DemiBold; elide: Text.ElideRight; color: root.theme.selectedText }
-                        CastText { text: "→ " + (root.state.receiver || qsTr("Speaker")); color: root.theme.selectedText; font.pixelSize: 11 }
-                    }
+                    text: root.state.source_name || qsTr("Desktop audio")
+                    color: root.theme.secondary
+                    elide: Text.ElideRight
                 }
                 CastText {
                     Layout.fillWidth: true
-                    text: root.state.message || qsTr("Select a receiver")
+                    visible: root.state.state === "Error"
+                    text: root.state.message || qsTr("Open Settings for details")
                     color: root.state.state === "Error" ? root.theme.error : root.theme.secondary
                     wrapMode: Text.WordWrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
                 }
                 RowLayout {
                     Layout.fillWidth: true
+                    visible: root.idle
                     CastText { Layout.fillWidth: true; text: qsTr("Speakers"); font.weight: Font.DemiBold }
                     ActionButton {
                         objectName: "castAudioRefresh"
                         visible: root.idle
+                        implicitHeight: 30
                         text: root.state.scanning ? qsTr("Searching…") : qsTr("Refresh")
                         flat: true
                         enabled: !root.state.scanning && root.idle
@@ -145,8 +123,8 @@ Rectangle {
                 Controls.ScrollView {
                     id: devicesScroll
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.min(240, receivers.implicitHeight)
-                    visible: (root.state.devices || []).length > 0
+                    Layout.preferredHeight: Math.min(144, receivers.implicitHeight)
+                    visible: root.idle && (root.state.devices || []).length > 0
                     contentWidth: availableWidth
                     palette.highlight: root.theme.accent
                     ColumnLayout {
@@ -159,9 +137,8 @@ Rectangle {
                                 required property var modelData
                                 objectName: "castAudioReceiver"
                                 Layout.fillWidth: true
-                                implicitHeight: 58
+                                implicitHeight: 36
                                 text: modelData.name
-                                subtitle: modelData.supported ? (modelData.manual ? qsTr("Saved IP · ") + modelData.host : modelData.detail || qsTr("Google Cast")) : qsTr("Unsupported receiver")
                                 active: !root.idle && root.state.receiver === modelData.name
                                 enabled: root.idle && modelData.supported
                                 Controls.ToolTip.visible: hovered
@@ -174,7 +151,7 @@ Rectangle {
                 CastText {
                     Layout.fillWidth: true
                     visible: !root.state.scanning && (root.state.devices || []).length === 0 && root.idle
-                    text: qsTr("No speakers found. Refresh, or add a receiver's IP address in Settings.")
+                    text: qsTr("No speakers · add IP in Settings")
                     wrapMode: Text.WordWrap
                     color: root.theme.secondary
                 }
@@ -224,13 +201,6 @@ Rectangle {
                     text: qsTr("Restart helper")
                     visible: root.state.state === "Error"
                     onClicked: root.controller.restartHelper()
-                }
-                CastText {
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: 11
-                    color: root.theme.secondary
-                    text: qsTr("Closing this menu keeps your audio playing.")
                 }
             }
         }

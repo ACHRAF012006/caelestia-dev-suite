@@ -20,7 +20,7 @@ class Processes:
             self.environment.pop(name, None)
         self.environment.update(NO_PROXY="*", no_proxy="*")
 
-    async def spawn(self, args, capture=False, *, stdin=asyncio.subprocess.DEVNULL, stdout=None):
+    async def spawn(self, args, capture=False, *, stdin=asyncio.subprocess.DEVNULL, stdout=None, diagnostics=False):
         cast_command = args[0] in ("catt", "cast-live")
         # Installed console scripts retain staging shebangs; invoke the module
         # with this sidecar's relocated environment instead.
@@ -35,7 +35,7 @@ class Processes:
             sys.executable, "-B", str(Path(__file__).with_name("child.py")),
             str(os.getpid()), executable, *args[1:],
             stdin=stdin, stdout=asyncio.subprocess.PIPE if stdout is None else stdout,
-            stderr=asyncio.subprocess.DEVNULL if capture else asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL if capture and not diagnostics else asyncio.subprocess.PIPE,
             env=self.environment if cast_command else None, limit=65536))
         try:
             process = await asyncio.shield(pending)
