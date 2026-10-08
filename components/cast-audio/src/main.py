@@ -61,10 +61,14 @@ async def main():
                 shutdown.set()
 
         async def refresh():
+            ticks = 0
             while True:
-                await asyncio.sleep(90)
+                await asyncio.sleep(5)
+                ticks += 1
                 if controller.visible and controller.state in ("Off", "Error"):
-                    controller.refresh()
+                    await dispatch({'action': 'refresh-audio'})
+                    if ticks % 18 == 0:
+                        controller.refresh()
 
         controller.publish()
         controller.refresh()

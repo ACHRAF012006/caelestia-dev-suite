@@ -52,8 +52,11 @@ def reap_abandoned(root):
 class HlsStream(Stream):
     label = 'Live AAC · 0.5 s segments · receiver delay varies'
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, latency='balanced', **kwargs):
         super().__init__(*args, **kwargs)
+        self.segment_time = .125 if latency == 'fast' else .5
+        self.window_size = 24 if latency == 'fast' else 12
+        self.label = 'Live AAC · ' + ('fast' if latency == 'fast' else 'balanced') + ' · receiver delay varies'
         self.path = self.path.replace('live.mp3', 'live.m3u8')
         self.prefix = self.path.rsplit('/', 1)[0] + '/'
         self.directory = None
@@ -69,13 +72,12 @@ class HlsStream(Stream):
             self.server = await asyncio.start_server(self.serve, self.address, self.port, limit=16384)
             self.port = self.server.sockets[0].getsockname()[1]
             self.url = f'http://{self.address}:{self.port}{self.path}'
-            self.encoder = await self.processes.spawn([
-                'ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin',
-                '-f', 'pulse', '-sample_rate', '48000', '-channels', '2', '-fragment_size', '3840',
-                '-i', monitor, '-vn', '-c:a', 'aac', '-b:a', f'{bitrate}k', '-ar', '48000', '-ac', '2',
-                '-f', 'hls', '-hls_time', '0.5', '-hls_list_size', '6', '-hls_delete_threshold', '4',
-                '-hls_flags', 'delete_segments+omit_endlist+independent_segments+temp_file',
-                '-hls_segment_filename', str(self.directory/'segment-%d.ts'), str(self.directory/'live.m3u8')], capture=True)
+            self.encoder = await self.encode(monitor, [
+                '-vn', '-c:a', 'aac', '-b:a', f'{bitrate}k', '-ar', '48000', '-ac', '2',
+                '-f', 'hls', '-hls_time', str(self.segment_time), '-hls_list_size', str(self.window_size), '-hls_delete_threshold', '4',
+                '-hls_flags', 'delete_segments+omit_endlist+independent_segments+temp_file+program_date_time',
+                '-hls_segment_options', 'mpegts_copyts=1',
+                '-hls_segment_filename', str(self.directory/'segment-%d.ts'), str(self.directory/'live.m3u8')])
             self.pump = asyncio.create_task(self.refresh_audio())
             await asyncio.wait_for(self.ready.wait(), 12)
             if self.failure:
@@ -98,7 +100,7 @@ class HlsStream(Stream):
             return
         lines = playlist.decode('ascii').splitlines()
         names = [line for line in lines if line and not line.startswith('#')]
-        if not lines or lines[0] != '#EXTM3U' or not 1 <= len(names) <= 6 or any(not SEGMENT.fullmatch(name) for name in names):
+        if not lines or lines[0] != '#EXTM3U' or not 1 <= len(names) <= self.window_size or any(not SEGMENT.fullmatch(name) for name in names):
             raise Failure('Invalid live audio playlist')
         updated = {}
         for name in names:
@@ -110,7 +112,7 @@ class HlsStream(Stream):
             updated[name] = segment.read_bytes()
         # Publish atomically after every referenced completed file is available.
         self.segments.update(updated)
-        while len(self.segments) > 12:
+        while len(self.segments) > self.window_size * 2:
             self.segments.popitem(last=False)
         self.raw_playlist = playlist
         # FFmpeg rounds subsecond durations to an integer. A zero target is
@@ -118,7 +120,7 @@ class HlsStream(Stream):
         self.playlist = re.sub(rb'(?m)^#EXT-X-TARGETDURATION:0$', b'#EXT-X-TARGETDURATION:1', playlist)
         self.last_audio = time.monotonic()
         # Give the receiver enough history to select a stable live position.
-        if len(names) >= 6:
+        if len(names) >= self.window_size:
             self.ready.set()
 
     async def refresh_audio(self):

@@ -49,7 +49,7 @@ def private_dir(path):
 
 
 class Preferences:
-    defaults = {"source": "default", "format": "hls", "bitrate": 192, "remember": True,
+    defaults = {"source": "default", "format": "hls", "latency": "fast", "bitrate": 192, "remember": True,
                 "reconnect": False, "last": "", "discovery_timeout": 45, "manual_devices": [], "stream_port": 48200}
 
     def __init__(self):
@@ -79,6 +79,8 @@ class Preferences:
         result = {**cls.defaults, **value}
         if result["format"] not in ("hls", "mp3"):
             raise Failure("Unsupported streaming mode")
+        if result['latency'] not in ('fast', 'balanced'):
+            raise Failure('Unsupported latency profile')
         if type(result["bitrate"]) is not int or result["bitrate"] not in (128, 192, 256, 320):
             raise Failure("Unsupported bitrate")
         if type(result["discovery_timeout"]) is not int or not 15 <= result["discovery_timeout"] <= 60:

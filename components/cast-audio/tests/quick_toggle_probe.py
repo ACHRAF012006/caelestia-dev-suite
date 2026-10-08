@@ -75,9 +75,13 @@ ShellRoot {
                 if (!menu) { Qt.quit(); return; }
                 root.check(!menu.expanded, "menu starts collapsed");
                 root.findItem(menu, "castAudioExpand").clicked();
-                fakeCast.snapshot = {state: "Off", message: "Choose a receiver", devices: [{id: "manual:192.168.20.8", host: "192.168.20.8", name: "VLAN Speaker", manual: true, supported: true}], settings: {}};
+                fakeCast.snapshot = {state: "Off", message: "Choose a receiver", devices: [{id: "manual:192.168.20.8", host: "192.168.20.8", name: "VLAN Speaker", manual: true, supported: true}], sources: [{id: "app:19:player", kind: "application", name: "Player", detail: "Music"}], settings: {}};
             } else if (root.phase === 1) {
                 root.check(menu && menu.expanded, "row expands without opening a window");
+                root.findItem(menu, "castAudioApp").clicked();
+                root.check(fakeCast.lastCommand.action === "settings" && fakeCast.lastCommand.values.source === "app:19:player", "app selection saves only the selected stream");
+                root.findItem(menu, "castAudioLatency").activated(1);
+                root.check(fakeCast.lastCommand.values.latency === "balanced", "delay profile can be changed inline");
                 const receiver = root.findItem(menu, "castAudioReceiver");
                 root.check(receiver !== null, "receiver list is embedded in row");
                 if (receiver) receiver.clicked();

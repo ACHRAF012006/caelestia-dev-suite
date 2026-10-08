@@ -1,6 +1,8 @@
 """Memory-only live MP3 fanout on one LAN interface; no remote control API."""
 import asyncio
 import errno
+import fcntl
+import os
 from collections import deque
 import secrets
 import socket
@@ -18,6 +20,7 @@ class Stream:
         self.path = "/" + secrets.token_hex(24) + "/live.mp3"
         self.port = port
         self.server = self.encoder = self.pump = None
+        self.capture = None
         self.queues, self.clients = set(), set()
         self.writers = set()
         self.closing = False
@@ -35,12 +38,9 @@ class Stream:
             port = self.server.sockets[0].getsockname()[1]
             self.port = port
             self.url = f"http://{self.address}:{port}{self.path}"
-            self.encoder = await self.processes.spawn([
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-                "-f", "pulse", "-sample_rate", "48000", "-channels", "2",
-                "-fragment_size", "3840", "-i", monitor, "-vn", "-c:a", "libmp3lame",
+            self.encoder = await self.encode(monitor, ["-vn", "-c:a", "libmp3lame",
                 "-b:a", f"{bitrate}k", "-ar", "48000", "-ac", "2", "-flush_packets", "1",
-                "-write_xing", "0", "-id3v2_version", "0", "-f", "mp3", "pipe:1"], capture=True)
+                "-write_xing", "0", "-id3v2_version", "0", "-f", "mp3", "pipe:1"])
             self.pump = asyncio.create_task(self.read_audio())
             await asyncio.wait_for(self.ready.wait(), 8)
             if self.failure:
@@ -51,6 +51,35 @@ class Stream:
             if error.errno == errno.EADDRINUSE:
                 raise Failure(f"Audio stream port {self.port} is in use; choose another port in Settings") from None
             raise Failure("Audio stream could not bind the receiver route's local address") from None
+
+    async def encode(self, source, options):
+        """App-only Pulse monitor capture through a bounded, owned OS pipe."""
+        prefix = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin']
+        if not isinstance(source, dict) or source.get('kind') != 'application':
+            monitor = source['monitor'] if isinstance(source, dict) else source
+            return await self.processes.spawn(prefix + ['-f', 'pulse', '-sample_rate', '48000',
+                '-channels', '2', '-fragment_size', '3840', '-i', monitor] + options, capture=True)
+        index = source.get('stream_index')
+        if type(index) is not int or index < 0:
+            raise Failure('Invalid application audio stream')
+        read_fd, write_fd = os.pipe()
+        try:
+            # At 48 kHz stereo s16, 4096 bytes is about 21 ms of PCM.
+            fcntl.fcntl(write_fd, fcntl.F_SETPIPE_SZ, 4096)
+            self.capture = await self.processes.spawn(['parec', '--raw', '--format=s16le',
+                '--rate=48000', '--channels=2', '--latency-msec=20', '--process-time-msec=10',
+                '--client-name=Cast Audio', '--stream-name=Selected app audio',
+                '--device=' + source['monitor'], '--monitor-stream=' + str(index)],
+                capture=True, stdout=write_fd)
+            os.close(write_fd)
+            write_fd = None
+            return await self.processes.spawn(prefix + ['-f', 's16le', '-ar', '48000', '-ac', '2',
+                '-probesize', '32', '-analyzeduration', '0', '-i', 'pipe:0'] + options,
+                capture=True, stdin=read_fd)
+        finally:
+            os.close(read_fd)
+            if write_fd is not None:
+                os.close(write_fd)
 
     async def read_audio(self):
         try:
@@ -166,6 +195,9 @@ class Stream:
         if self.encoder:
             await self.processes.end(self.encoder)
             self.encoder = None
+        if self.capture:
+            await self.processes.end(self.capture)
+            self.capture = None
         if server:
             await server.wait_closed()
         self.recent.clear()

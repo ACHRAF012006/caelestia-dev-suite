@@ -1,6 +1,6 @@
 # Project context
 
-Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.5.0. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
+Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.5.1. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
 
 Read README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md (alias to COMPONENT_SPEC), docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md, docs/CODEX_WORKFLOW.md and docs/COMPONENT_STORE.md before changing component behavior.
 
@@ -24,4 +24,4 @@ The GitHub suite separates `caelestia-dev-manager/` (manager, installer and docs
 
 Cast Audio 0.2 declares integration.target=caelestia-quick-toggles. The manager owns a checksum-pinned two-file adapter with separate host receipts and transaction recovery. New installs enable it and restart the shell; updates preserve disabled state; uninstall restores original host files. Never execute component-supplied patches or generalize this into arbitrary host writes. Read docs/QUICK_TOGGLES_INTEGRATION.md.
 
-Manager 0.5 supports private Python environments for Quickshell sidecars. Cast Audio 0.3 uses installed _venv/bin/python via src/launcher.py and invokes catt.cli as a module to avoid staging shebangs. Installation reviews fixed ffmpeg/pactl package mappings and portable active-UFW rules through native authentication; no component can supply privileged commands. Select the current PC address by receiver route, never hardcode development IPs. Do not claim audio works from a Cast connection sound or LOAD acknowledgement: verify receiver bytes and PLAYING.
+Manager 0.5 supports private Python environments for Quickshell sidecars. Cast Audio 0.5.0 uses installed _venv/bin/python via src/launcher.py and invokes catt.cli as a module to avoid staging shebangs. Installation reviews fixed ffmpeg/pactl/parec package mappings and portable active-UFW rules through native authentication; no component can supply privileged commands. Select the current PC address by receiver route, never hardcode development IPs. Do not claim audio works from a Cast connection sound or LOAD acknowledgement: verify receiver bytes and PLAYING.

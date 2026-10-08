@@ -2,8 +2,8 @@
   "schema_version": 1,
   "id": "cast-audio",
   "name": "Cast Audio",
-  "version": "0.4.1",
-  "description": "Cast a PipeWire output monitor to a local Google Cast receiver.",
+  "version": "0.5.0",
+  "description": "Cast desktop or one app's audio from a themed Caelestia menu, with Fast and Balanced live profiles.",
   "type": "caelestia-plugin",
   "runtime": "quickshell",
   "entrypoint": "main.qml",
@@ -12,6 +12,7 @@
       "quickshell",
       "python3",
       "pactl",
+      "parec",
       "ffmpeg"
     ],
     "python": [
@@ -22,14 +23,14 @@
     "caelestia_commit": "e34b6957fad5ce9395841b65be9e3df180ccd65c"
   },
   "permissions": [
-    "Capture the selected output monitor, including all applications playing through that output, after Start or explicit reconnect opt-in.",
+    "Capture the selected output monitor or one explicitly selected application playback stream after Start or explicit reconnect opt-in; exclude microphones and preserve local playback/routing.",
     "Discover Google Cast receivers using local-network mDNS through the component-owned catt library.",
     "Control the selected receiver and serve unencrypted live audio on the route-selected private IPv4 interface while casting.",
     "Keep a bounded live AAC segment window in private /dev/shm tmpfs during capture, remove it on Stop and reap abandoned owned sessions on the next live start; do not fall back to disk storage.",
     "Read the active Caelestia color scheme and Qt system palette to theme the menu and settings app.",
     "Keep preferences and a private catt configuration under XDG_CONFIG_HOME/cast-audio and runtime locking under the component's XDG runtime/cache directory.",
     "Start and stop only the component's own helper, catt and FFmpeg processes; preserve local playback and default devices.",
-    "Integrate an expandable Cast menu into the two verified Caelestia KDE Quick Toggles host files through Dev Manager 0.5.0; installation enables this plugin and reloads the shell.",
+    "Integrate an expandable Cast menu into the two verified Caelestia KDE Quick Toggles host files through Dev Manager 0.5.1; installation enables this plugin and reloads the shell.",
     "Connect to explicitly saved private IPv4 receivers across routed VLANs; optionally listen on a configured TCP stream port while casting.",
     "Open a separate Cast Audio Settings app using a same-user private Unix settings endpoint; no Google credentials are requested or stored.",
     "Dev Manager prepares private Cast Python dependencies and, after installation review and native administrator authentication, missing audio tools and an active UFW firewall for the configured fixed stream port on this PC."

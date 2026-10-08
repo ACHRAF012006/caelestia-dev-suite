@@ -13,26 +13,25 @@ ShellRoot {
     property bool dirty: false
     property string notice: qsTr("Loading settings…")
     property string errorMessage: ""
+    property string sourceChoice: "default"
     function send(message) { if (bridge.running) bridge.write(JSON.stringify(message) + "\n"); }
     function markDirty() { if (loaded) dirty = true; }
     function hydrate(settings) {
         loaded = false;
         format.currentIndex = settings.format === "mp3" ? 1 : 0;
+        latency.currentIndex = settings.latency === "balanced" ? 1 : 0;
         bitrate.currentIndex = Math.max(0, [128, 192, 256, 320].indexOf(settings.bitrate || 192));
         remember.checked = settings.remember === true;
         reconnect.checked = settings.reconnect === true;
         timeout.value = settings.discovery_timeout || 45;
         streamPort.value = settings.stream_port || 0;
         manualDevices = settings.manual_devices || [];
-        const items = [{id: "default", name: qsTr("Current default output")}].concat(snapshot.sources || []);
-        if (settings.source && !items.some(s => s.id === settings.source)) items.push({id: settings.source, name: settings.source});
-        source.model = items;
-        source.currentIndex = Math.max(0, items.findIndex(s => s.id === (settings.source || "default")));
+        sourceChoice = settings.source || "default";
         loaded = true; dirty = false;
     }
     function save() {
-        send({action: "settings", values: {source: source.model[source.currentIndex].id,
-            format: format.currentIndex === 0 ? "hls" : "mp3", bitrate: [128,192,256,320][bitrate.currentIndex], remember: remember.checked,
+        send({action: "settings", values: {source: sourceChoice,
+            format: format.currentIndex === 0 ? "hls" : "mp3", latency: latency.currentIndex === 0 ? "fast" : "balanced", bitrate: [128,192,256,320][bitrate.currentIndex], remember: remember.checked,
             reconnect: reconnect.checked, discovery_timeout: timeout.value,
             stream_port: streamPort.value, manual_devices: manualDevices}});
     }
@@ -62,8 +61,8 @@ ShellRoot {
         property Theme theme: Theme {}
         visible: true
         title: qsTr("Cast Audio Settings")
-        implicitWidth: 680
-        implicitHeight: 760
+        implicitWidth: 720
+        implicitHeight: 650
         minimumSize: Qt.size(460, 440)
         color: theme.surface
         onVisibleChanged: if (!visible) Qt.quit()
@@ -79,9 +78,20 @@ ShellRoot {
                     Layout.fillWidth: true
                     spacing: 4
                     CastText { text: qsTr("Cast Audio"); font.pixelSize: 24; font.weight: Font.DemiBold }
-                    CastText { text: qsTr("Your audio, on your speakers"); color: window.theme.secondary }
+                    CastText { text: qsTr("Choose your audio. Choose your speaker."); color: window.theme.secondary }
                 }
                 CastText { text: root.dirty ? qsTr("Unsaved changes") : qsTr("Settings"); color: window.theme.secondary; font.pixelSize: 11 }
+            }
+            Controls.TabBar {
+                id: pages
+                Layout.fillWidth: true
+                palette.button: window.theme.card
+                palette.buttonText: window.theme.foreground
+                palette.highlight: window.theme.accent
+                Controls.TabButton { text: qsTr("Audio") }
+                Controls.TabButton { text: qsTr("Speakers") }
+                Controls.TabButton { text: qsTr("Connection") }
+                Controls.TabButton { text: qsTr("About") }
             }
             Controls.ScrollView {
                 id: scroll
@@ -121,19 +131,31 @@ ShellRoot {
                     }
                     SettingsSection {
                         Layout.fillWidth: true
+                        visible: pages.currentIndex === 0
                         enabled: root.loaded && (root.snapshot.state === "Off" || root.snapshot.state === "Error")
-                        title: qsTr("Audio")
-                        description: qsTr("Choose the output to share and how to stream it.")
-                        CastText { text: qsTr("Audio output") }
-                        Controls.ComboBox { id: source; Layout.fillWidth: true; textRole: "name"; model: []; onActivated: root.markDirty() }
+                        title: qsTr("What to cast")
+                        description: qsTr("Share your desktop audio, or isolate one app stream without changing local playback.")
+                        SourcePicker { Layout.fillWidth: true; sources: root.snapshot.sources || []; selectedId: root.sourceChoice; onChosen: identity => { root.sourceChoice = identity; root.markDirty(); } }
+                        CastText { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: window.theme.secondary; text: qsTr("Apps appear when they create an audio stream. Separate browser tabs can appear separately. If the selected stream closes, casting stops.") }
+                    }
+                    SettingsSection {
+                        Layout.fillWidth: true
+                        visible: pages.currentIndex === 0
+                        enabled: root.loaded && (root.snapshot.state === "Off" || root.snapshot.state === "Error")
+                        title: qsTr("Playback")
+                        description: qsTr("Balance delay, reliability and quality for this receiver.")
                         CastText { text: qsTr("Streaming mode") }
                         Controls.ComboBox { id: format; Layout.fillWidth: true; model: [qsTr("Live · shorter delay"), qsTr("MP3 · compatibility")]; onActivated: root.markDirty() }
                         CastText { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: window.theme.secondary; text: format.currentIndex === 0 ? qsTr("Short live segments keep playback closer to your PC audio. The speaker still adds a playback buffer.") : qsTr("Use MP3 if your receiver cannot play the live stream. Some speakers buffer 20–30 seconds.") }
+                        CastText { visible: format.currentIndex === 0; text: qsTr("Delay profile") }
+                        Controls.ComboBox { id: latency; visible: format.currentIndex === 0; Layout.fillWidth: true; model: [qsTr("Fast · lowest delay"), qsTr("Balanced · more headroom")]; onActivated: root.markDirty() }
+                        CastText { visible: format.currentIndex === 0; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: window.theme.secondary; text: qsTr("Fast sends 125 ms segments. About 2 seconds is a target, not a guaranteed speaker delay. Choose Balanced if playback has gaps.") }
                         CastText { text: qsTr("Audio bitrate · 48 kHz · stereo") }
                         Controls.ComboBox { id: bitrate; Layout.fillWidth: true; model: [qsTr("128 kbit/s"), qsTr("192 kbit/s"), qsTr("256 kbit/s"), qsTr("320 kbit/s")]; onActivated: root.markDirty() }
                     }
                     SettingsSection {
                         Layout.fillWidth: true
+                        visible: pages.currentIndex === 2
                         enabled: root.loaded && (root.snapshot.state === "Off" || root.snapshot.state === "Error")
                         title: qsTr("Connection")
                         description: qsTr("Device discovery runs while idle. The timeout controls how long searches wait for receivers.")
@@ -149,6 +171,7 @@ ShellRoot {
                     }
                     SettingsSection {
                         Layout.fillWidth: true
+                        visible: pages.currentIndex === 1
                         enabled: root.loaded && (root.snapshot.state === "Off" || root.snapshot.state === "Error")
                         title: qsTr("Saved speakers")
                         description: qsTr("Add a receiver by private IPv4 address when it is on another VLAN or discovery cannot find it.")
@@ -182,6 +205,7 @@ ShellRoot {
                     }
                     SettingsSection {
                         Layout.fillWidth: true
+                        visible: pages.currentIndex === 2
                         enabled: root.loaded && (root.snapshot.state === "Off" || root.snapshot.state === "Error")
                         title: qsTr("Network")
                         RowLayout {
@@ -194,6 +218,7 @@ ShellRoot {
                     }
                     SettingsSection {
                         Layout.fillWidth: true
+                        visible: pages.currentIndex === 3
                         title: qsTr("Google account")
                         description: qsTr("This Linux backend supports local discovery and saved IP addresses. Google account device discovery is unavailable; no sign-in or credentials are needed.")
                         ActionButton { text: qsTr("Google Home API information"); flat: true; onClicked: Qt.openUrlExternally("https://developers.home.google.com/apis") }

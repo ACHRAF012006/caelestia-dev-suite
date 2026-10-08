@@ -18,7 +18,7 @@ Rectangle {
     implicitWidth: 300
     implicitHeight: layout.implicitHeight + 20
     radius: Tokens.rounding.large
-    color: theme.card
+    color: theme.surface
     border.width: 1
     border.color: casting ? theme.accent : theme.outline
     onExpandedChanged: controller.menuVisible(visible && expanded)
@@ -49,7 +49,7 @@ Rectangle {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 3
-                        CastText { text: qsTr("Cast Audio"); font.weight: Font.DemiBold }
+                        CastText { text: qsTr("Cast Audio"); font.weight: Font.DemiBold; font.pixelSize: 15 }
                         CastText { Layout.fillWidth: true; text: root.statusText; font.pixelSize: 11; color: root.state.state === "Error" ? root.theme.error : root.theme.secondary; elide: Text.ElideRight }
                     }
                     CastText {
@@ -82,6 +82,48 @@ Rectangle {
                 height: implicitHeight
                 spacing: 10
                 Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.theme.outline }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: root.idle
+                    CastText { Layout.fillWidth: true; text: qsTr("What to cast"); font.weight: Font.DemiBold }
+                    ActionButton { objectName: "castAudioRefreshApps"; text: qsTr("Update apps"); flat: true; onClicked: root.controller.send({action: "refresh-audio"}) }
+                }
+                SourcePicker {
+                    Layout.fillWidth: true
+                    visible: root.idle
+                    sources: root.state.sources || []
+                    selectedId: (root.state.settings || {}).source || "default"
+                    onChosen: identity => root.controller.send({action: "settings", values: {source: identity}})
+                }
+                Controls.ComboBox {
+                    objectName: "castAudioLatency"
+                    Layout.fillWidth: true
+                    visible: root.idle && (root.state.settings || {}).format !== "mp3"
+                    model: [qsTr("Fast · lowest delay"), qsTr("Balanced · more headroom")]
+                    currentIndex: (root.state.settings || {}).latency === "balanced" ? 1 : 0
+                    palette.button: root.theme.raised
+                    palette.buttonText: root.theme.foreground
+                    palette.window: root.theme.card
+                    palette.windowText: root.theme.foreground
+                    palette.highlight: root.theme.accent
+                    palette.highlightedText: root.theme.accentText
+                    onActivated: index => root.controller.send({action: "settings", values: {latency: index === 0 ? "fast" : "balanced"}})
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    visible: !root.idle
+                    implicitHeight: sharing.implicitHeight + 24
+                    radius: 12
+                    color: root.theme.selected
+                    ColumnLayout {
+                        id: sharing
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12
+                        spacing: 4
+                        CastText { text: qsTr("NOW SHARING"); font.pixelSize: 10; font.letterSpacing: 1; color: root.theme.selectedText }
+                        CastText { Layout.fillWidth: true; text: root.state.source_name || qsTr("Desktop audio"); font.weight: Font.DemiBold; elide: Text.ElideRight; color: root.theme.selectedText }
+                        CastText { text: "→ " + (root.state.receiver || qsTr("Speaker")); color: root.theme.selectedText; font.pixelSize: 11 }
+                    }
+                }
                 CastText {
                     Layout.fillWidth: true
                     text: root.state.message || qsTr("Select a receiver")

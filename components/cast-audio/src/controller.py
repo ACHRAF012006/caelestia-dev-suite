@@ -16,6 +16,7 @@ class Controller:
         self.devices, self.sources = merge_devices([], preferences.values["manual_devices"]), []
         self.receiver = self.stream = self.source = None
         self.operation = self.discovery = self.monitor = None
+        self.cleanup_task = None
         self.state, self.message = "Off", preferences.notice or "Not connected"
         self.scanning = False
         self.volume, self.muted = 0, False
@@ -117,8 +118,9 @@ class Controller:
                 if self.cast.busy(await self.cast.info(receiver)):
                     raise Failure("Receiver already busy; stop its current session before casting")
                 stream_type = HlsStream if self.prefs.values["format"] == "hls" else Stream
-                self.stream = stream_type(self.processes, route(receiver["host"]), receiver["host"], self.prefs.values["stream_port"])
-                await self.stream.start(self.source["monitor"], self.prefs.values["bitrate"])
+                options = {'latency': self.prefs.values['latency']} if self.prefs.values['format'] == 'hls' else {}
+                self.stream = stream_type(self.processes, route(receiver["host"]), receiver["host"], self.prefs.values["stream_port"], **options)
+                await self.stream.start(self.source, self.prefs.values["bitrate"])
                 self.status("Connecting…", "Waiting for receiver playback…")
                 await self.cast.start(receiver, self.stream.url)
                 # Receivers can still be buffering after eight status polls.
@@ -169,6 +171,11 @@ class Controller:
                 if address != self.stream.address:
                     raise Failure("Network changed; reconnect on the current network")
                 tick += 1
+                if self.source.get('kind') == 'application' and tick % 2 == 0:
+                    self.sources = await audio.sources(self.processes)
+                    current = audio.select(self.sources, self.prefs.values['source'])
+                    if current['monitor'] != self.source['monitor']:
+                        raise Failure('Selected app changed audio output; reconnect to capture it')
                 if tick % 10:
                     continue
                 info = await self.cast.info(self.receiver)
@@ -190,6 +197,17 @@ class Controller:
             self.status("Error", self.error(exc))
 
     async def cleanup(self):
+        # Stop may cancel watch while it is already stopping a closed app.
+        # Share the owned shutdown until remote Stop and local cleanup finish.
+        if self.cleanup_task is None or (self.cleanup_task.done() and (self.stream is not None or self.receiver is not None)):
+            self.cleanup_task = asyncio.create_task(self.cleanup_owned())
+        try:
+            return await asyncio.shield(self.cleanup_task)
+        except asyncio.CancelledError:
+            await self.cleanup_task
+            raise
+
+    async def cleanup_owned(self):
         stream, receiver = self.stream, self.receiver
         self.stream = self.receiver = self.source = None
         async def stop_receiver():
@@ -245,7 +263,15 @@ class Controller:
 
     async def handle(self, message):
         action = message.get("action")
-        if action == "refresh":
+        if action == "refresh-audio":
+            if self.state in ('Off', 'Error'):
+                try:
+                    self.sources = await audio.sources(self.processes)
+                    self.publish()
+                except Exception as exc:
+                    self.message = self.error(exc)
+                    self.publish()
+        elif action == "refresh":
             self.refresh()
         elif action == "start":
             self.begin(message.get("id"))
@@ -262,7 +288,7 @@ class Controller:
             try:
                 if self.state not in ("Off", "Error"):
                     raise Failure("Stop casting before changing settings")
-                if not isinstance(changes, dict) or set(changes) - {"source", "format", "bitrate", "remember", "reconnect", "discovery_timeout", "manual_devices", "stream_port"}:
+                if not isinstance(changes, dict) or set(changes) - (set(self.prefs.defaults) - {'last'}):
                     raise Failure("Invalid settings")
                 self.prefs.save(changes)
                 self.devices = merge_devices([device for device in self.devices if not device.get("manual")], self.prefs.values["manual_devices"])

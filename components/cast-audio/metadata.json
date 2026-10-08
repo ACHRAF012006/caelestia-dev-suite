@@ -1,8 +1,8 @@
 {
   "id": "cast-audio",
   "name": "Cast Audio",
-  "version": "0.4.1",
-  "description": "Cast a PipeWire output monitor to a local Google Cast receiver.",
+  "version": "0.5.0",
+  "description": "Cast desktop or one app's audio from a themed Caelestia menu, with Fast and Balanced live profiles.",
   "type": "quickshell",
   "ui": "main.qml",
   "icon": "cast",

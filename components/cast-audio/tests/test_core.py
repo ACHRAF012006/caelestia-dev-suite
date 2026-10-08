@@ -95,14 +95,14 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         stream.directory.mkdir()
         folder = stream.directory
         self.addAsyncCleanup(stream.close)
-        for index in range(18):
+        for index in range(40):
             name = f"segment-{index}.ts"
             (folder/name).write_bytes(b"encoded audio")
-            names = [f"segment-{n}.ts" for n in range(max(0, index-5), index+1)]
+            names = [f"segment-{n}.ts" for n in range(max(0, index-11), index+1)]
             (folder/"live.m3u8").write_text("#EXTM3U\n" + "\n".join(names) + "\n")
             stream.read_snapshot()
         self.assertTrue(stream.ready.is_set())
-        self.assertEqual(len(stream.segments), 12)
+        self.assertEqual(len(stream.segments), 24)
         self.assertNotIn("segment-0.ts", stream.segments)
         previous = stream.playlist
         for name in ("../settings.json", "http://192.168.1.2/private.ts", "segment-999.ts"):
@@ -118,7 +118,7 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         stream.directory = Path(self.temp.name) / "segments"
         stream.directory.mkdir()
         self.addAsyncCleanup(stream.close)
-        names = [f"segment-{n}.ts" for n in range(6)]
+        names = [f"segment-{n}.ts" for n in range(12)]
         for name in names:
             (stream.directory/name).write_bytes(b"encoded audio")
         raw = "#EXTM3U\n#EXT-X-TARGETDURATION:0\n" + "".join(f"#EXTINF:0.5,\n{name}\n" for name in names)
@@ -418,11 +418,96 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
     async def test_monitor_selection_never_uses_microphone(self):
         runner = AsyncMock()
         runner.run.side_effect = [json.dumps([{"name": "speaker", "description": "Speakers", "monitor_source": "speaker.monitor"}]),
-                                  json.dumps([{"index": 1, "name": "mic"}, {"index": 2, "name": "speaker.monitor"}]), "speaker\n"]
+                                  json.dumps([{"index": 1, "name": "mic"}, {"index": 2, "name": "speaker.monitor"}]), "speaker\n", "[]"]
         found = await audio.sources(runner)
         self.assertEqual(audio.select(found, "default")["monitor"], "speaker.monitor")
         with self.assertRaises(Failure):
             audio.select(found, "mic")
+
+    async def test_app_choices_are_output_streams_and_reused_indexes_do_not_match(self):
+        runner = AsyncMock()
+        output = {'index': 5, 'name': 'speaker', 'monitor_source': 'speaker.monitor'}
+        application = {'index': 19, 'sink': 5, 'corked': False, 'properties': {
+            'application.name': 'Player', 'application.process.id': '100', 'object.serial': '19', 'media.name': 'Music'}}
+        def responses():
+            return [json.dumps([output]), json.dumps([{'index': 1, 'name': 'speaker.monitor'}]), 'speaker',
+                    json.dumps([application, {'index': 20, 'sink': 999, 'properties': {'application.name': 'Other'}}])]
+        runner.run.side_effect = responses()
+        found = await audio.sources(runner)
+        chosen = next(item for item in found if item.get('kind') == 'application')
+        self.assertEqual(chosen['name'], 'Player')
+        self.assertEqual(chosen['stream_index'], 19)
+        self.assertEqual(chosen['monitor'], 'speaker.monitor')
+        self.assertEqual(audio.select(found, 'default')['kind'], 'output')
+        application['properties']['application.process.id'] = '200'
+        runner.run.side_effect = responses()
+        refreshed = await audio.sources(runner)
+        with self.assertRaises(Failure):
+            audio.select(refreshed, chosen['id'])
+
+    async def test_failed_app_encoder_start_can_reap_capture_and_close_pipe(self):
+        stream = Stream(self.processes, '127.0.0.1', '127.0.0.1')
+        real_spawn = self.processes.spawn
+        async def spawn(args, capture=False, **kwargs):
+            if args[0] == 'parec':
+                return await real_spawn([sys.executable, '-c', 'import time;time.sleep(30)'], capture, **kwargs)
+            raise Failure('Encoder unavailable')
+        with patch.object(self.processes, 'spawn', new=spawn):
+            with self.assertRaises(Failure):
+                await stream.encode({'kind': 'application', 'monitor': 'speaker.monitor', 'stream_index': 7}, [])
+        child = stream.capture
+        await stream.close()
+        self.assertIsNotNone(child.returncode)
+        self.assertFalse(self.processes.children)
+
+    async def test_source_refresh_preserves_discovery_and_active_capture(self):
+        controller = Controller(self.prefs, self.processes, lambda _: None)
+        controller.cast.scan = AsyncMock()
+        with patch('controller.audio.sources', new=AsyncMock(return_value=[{'id': 'app'}])) as refresh:
+            await controller.handle({'action': 'refresh-audio'})
+            self.assertEqual(controller.sources, [{'id': 'app'}])
+            controller.state = 'Casting'
+            await controller.handle({'action': 'refresh-audio'})
+            self.assertEqual(refresh.await_count, 1)
+        controller.cast.scan.assert_not_awaited()
+
+    async def test_cancelled_app_cleanup_still_finishes_remote_stop_once(self):
+        controller = Controller(self.prefs, self.processes, lambda _: None)
+        controller.stream = AsyncMock()
+        controller.stream.url = 'our-session'
+        stream = controller.stream
+        controller.receiver = {'host': '192.168.1.5'}
+        entered, finish = asyncio.Event(), asyncio.Event()
+        async def remote(*args):
+            entered.set()
+            await finish.wait()
+        controller.cast.stop_owned = AsyncMock(side_effect=remote)
+        cleaning = asyncio.create_task(controller.cleanup())
+        await entered.wait()
+        cleaning.cancel()
+        await asyncio.sleep(0)
+        finish.set()
+        await asyncio.gather(cleaning, return_exceptions=True)
+        self.assertTrue(await controller.cleanup())
+        controller.cast.stop_owned.assert_awaited_once()
+        stream.close.assert_awaited_once()
+
+    async def test_fast_profile_migration_validation_and_bounded_history(self):
+        self.assertEqual(Preferences.validate({})['latency'], 'fast')
+        with self.assertRaises(Failure):
+            self.prefs.save({'latency': 'zero'})
+        stream = HlsStream(self.processes, '127.0.0.1', '127.0.0.1', latency='fast')
+        self.assertEqual(stream.segment_time, .125)
+        stream.directory = Path(self.temp.name) / 'fast'
+        stream.directory.mkdir()
+        self.addAsyncCleanup(stream.close)
+        for n in range(80):
+            (stream.directory / f'segment-{n}.ts').write_bytes(b'audio')
+            names = [f'segment-{i}.ts' for i in range(max(0, n-23), n+1)]
+            (stream.directory / 'live.m3u8').write_text('#EXTM3U\n' + '\n'.join(names) + '\n')
+            stream.read_snapshot()
+        self.assertTrue(stream.ready.is_set())
+        self.assertEqual(len(stream.segments), 48)
 
     async def test_no_stop_is_sent_for_replacement_session(self):
         cast = Cast(self.processes)

@@ -11,7 +11,7 @@ from backend.paths import SafetyError
 def cast_manifest():
     return {"id": "cast-audio", "type": "caelestia-plugin", "runtime": "quickshell",
             "integration": {"target": "caelestia-quick-toggles"},
-            "dependencies": {"system": ["python3", "quickshell", "ffmpeg", "pactl"]}}
+            "dependencies": {"system": ["python3", "quickshell", "ffmpeg", "pactl", "parec"]}}
 
 
 def test_fixed_audio_package_mapping_and_no_partial_arch_upgrade(manager, monkeypatch):

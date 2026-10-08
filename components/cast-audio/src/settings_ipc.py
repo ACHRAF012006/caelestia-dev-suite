@@ -41,12 +41,14 @@ class SettingsServer:
                         raise Failure("Stop casting before changing settings")
                     # Validate before dispatch so callers receive an explicit failure.
                     changes = request.get("values")
-                    if not isinstance(changes, dict) or set(changes) - {"source", "format", "bitrate", "remember", "reconnect", "discovery_timeout", "manual_devices", "stream_port"}:
+                    if not isinstance(changes, dict) or set(changes) - (set(self.controller.prefs.defaults) - {'last'}):
                         raise Failure("Invalid settings")
                     expected = self.controller.prefs.validate({**self.controller.prefs.values, **changes})
                     await self.dispatch(request)
                     if self.controller.prefs.values != expected:
                         raise Failure(self.controller.message)
+                elif self.controller.state in ('Off', 'Error'):
+                    await self.dispatch({'action': 'refresh-audio'})
                 response = {"ok": True, "snapshot": self.controller.snapshot()}
         except (ValueError, OSError, TimeoutError, Failure) as error:
             response = {"ok": False, "error": str(error)[:240]}

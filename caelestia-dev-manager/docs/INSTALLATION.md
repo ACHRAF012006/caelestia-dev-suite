@@ -2,7 +2,7 @@
 
 For the desktop itself, see [Install Caelestia on KDE Plasma](CAELESTIA_KDE_SETUP.md). That guide follows the upstream desktop installer; the steps below install Dev Manager.
 
-Requires Python 3.11+, venv/pip, Qt/PySide6 available as binary wheels, and a working KDE/Wayland session for desktop use. Arch/CachyOS detection is informational; Cast Audio installation has reviewed fixed ffmpeg/pactl package recipes; other missing tools are reported for explicit setup. `systemctl --user` is required for service control. `qml6` is needed for standalone QML templates. `desktop-file-validate` and `kbuildsycoca6` are used when available. Qt/PySide6 is installed inside the manager's own user virtualenv; system Python is unchanged.
+Requires Python 3.11+, venv/pip, Qt/PySide6 available as binary wheels, and a working KDE/Wayland session for desktop use. Arch/CachyOS detection is informational; Cast Audio installation has reviewed fixed ffmpeg/pactl/parec package recipes; other missing tools are reported for explicit setup. `systemctl --user` is required for service control. `qml6` is needed for standalone QML templates. `desktop-file-validate` and `kbuildsycoca6` are used when available. Qt/PySide6 is installed inside the manager's own user virtualenv; system Python is unchanged.
 
 From the repository:
 
@@ -60,4 +60,4 @@ The manager itself has no persistent daemon or autostart service. User-service c
 
 ## Cast Audio portable setup (manager 0.5)
 
-Quickshell Python sidecars can declare private Python dependencies. Cast Audio 0.3 installs its own catt environment and uses its installed interpreter, independent of PATH launchers. Its installation checks missing audio executables, offers fixed Arch/CachyOS or Debian/Ubuntu package preparation, and prepares active-UFW incoming TCP rules from private IPv4 networks to any local address on the saved fixed port (default 48200). KDE native authentication handles the privileged step. No firewall is enabled or router policy changed. Preparation persists after uninstall; retry after interruption checks current state. Reinstall after changing the stream port. Ports chosen dynamically need explicit firewall setup.
+Quickshell Python sidecars can declare private Python dependencies. Cast Audio 0.5.0 installs its own catt environment and uses its installed interpreter, independent of PATH launchers. Its installation checks missing audio executables, offers fixed Arch/CachyOS or Debian/Ubuntu package preparation, and prepares active-UFW incoming TCP rules from private IPv4 networks to any local address on the saved fixed port (default 48200). KDE native authentication handles the privileged step. No firewall is enabled or router policy changed. Preparation persists after uninstall; retry after interruption checks current state. Reinstall after changing the stream port. Ports chosen dynamically need explicit firewall setup.

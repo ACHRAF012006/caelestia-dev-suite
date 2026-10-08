@@ -32,7 +32,7 @@ The optional icon must actually exist. Omit it to use the desktop development ic
 | runtime | python, python-pyside6, shell, qml, quickshell, none (draft) |
 | entrypoint | Safe source-relative file, required to install |
 | args | Optional array of literal command arguments; no shell interpolation |
-| dependencies.system | Executable names checked on PATH. Fixed Cast Audio recipes can prepare ffmpeg/pactl after review; other missing tools need explicit setup. |
+| dependencies.system | Executable names checked on PATH. Fixed Cast Audio recipes can prepare ffmpeg/pactl/parec after review; other missing tools need explicit setup. |
 | dependencies.python | Package names with optional simple version comparator; no URLs, flags or hooks |
 | desktop | Optional terminal boolean, semicolon-separated categories, safe source-relative SVG icon, createShortcut boolean, startupNotify boolean |
 | service.restart | no, on-failure, always; defaults to no |

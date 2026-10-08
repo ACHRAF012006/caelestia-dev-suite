@@ -71,7 +71,7 @@ def context(manager, request, statuses=None, dependencies=None):
              "Manager 0.5 prepares Python dependencies for python/python-pyside6 runtimes and Quickshell sidecars. "
              "A Quickshell helper must launch the installed _venv/bin/python; invoke console tools as Python modules "
              "to avoid staging shebangs. Cast Audio declares catt==0.13.3 there, so installation prepares it automatically. "
-             "Its fixed manager recipe can install missing ffmpeg/pactl on Arch/CachyOS or Debian/Ubuntu and prepare "
+             "Its fixed manager recipe can install missing ffmpeg/pactl/parec on Arch/CachyOS or Debian/Ubuntu and prepare "
              "an already-active UFW firewall through reviewed native authentication. Never hardcode a computer address; "
              "select its route to the receiver and use the configured stream port. Other system tools still require "
              "explicit setup. Global pip or the manager environment does not satisfy component dependencies. Keep the shell "
