@@ -136,6 +136,7 @@ ShellRoot {
                         Layout.fillWidth: true
                         enabled: root.loaded && (root.snapshot.state === "Off" || root.snapshot.state === "Error")
                         title: qsTr("Connection")
+                        description: qsTr("Device discovery runs while idle. The timeout controls how long searches wait for receivers.")
                         Controls.CheckBox { id: remember; text: qsTr("Remember last receiver"); onClicked: root.markDirty() }
                         Controls.CheckBox { id: reconnect; text: qsTr("Reconnect when Caelestia starts"); enabled: remember.checked; onClicked: root.markDirty() }
                         CastText { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: window.theme.secondary; text: qsTr("Automatic reconnect starts sharing the selected output's audio.") }

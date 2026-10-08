@@ -50,7 +50,7 @@ def reap_abandoned(root):
 
 
 class HlsStream(Stream):
-    label = 'Live AAC · short segments · receiver delay varies'
+    label = 'Live AAC · 0.5 s segments · receiver delay varies'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -58,6 +58,7 @@ class HlsStream(Stream):
         self.prefix = self.path.rsplit('/', 1)[0] + '/'
         self.directory = None
         self.playlist = b''
+        self.raw_playlist = b''
         self.segments = OrderedDict()
 
     async def start(self, monitor, bitrate):
@@ -72,7 +73,7 @@ class HlsStream(Stream):
                 'ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin',
                 '-f', 'pulse', '-sample_rate', '48000', '-channels', '2', '-fragment_size', '3840',
                 '-i', monitor, '-vn', '-c:a', 'aac', '-b:a', f'{bitrate}k', '-ar', '48000', '-ac', '2',
-                '-f', 'hls', '-hls_time', '1', '-hls_list_size', '6', '-hls_delete_threshold', '4',
+                '-f', 'hls', '-hls_time', '0.5', '-hls_list_size', '6', '-hls_delete_threshold', '4',
                 '-hls_flags', 'delete_segments+omit_endlist+independent_segments+temp_file',
                 '-hls_segment_filename', str(self.directory/'segment-%d.ts'), str(self.directory/'live.m3u8')], capture=True)
             self.pump = asyncio.create_task(self.refresh_audio())
@@ -93,7 +94,7 @@ class HlsStream(Stream):
         if path.stat().st_size > 16384:
             raise Failure('Live playlist exceeded its size limit')
         playlist = path.read_bytes()
-        if playlist == self.playlist:
+        if playlist == self.raw_playlist:
             return
         lines = playlist.decode('ascii').splitlines()
         names = [line for line in lines if line and not line.startswith('#')]
@@ -111,7 +112,10 @@ class HlsStream(Stream):
         self.segments.update(updated)
         while len(self.segments) > 12:
             self.segments.popitem(last=False)
-        self.playlist = playlist
+        self.raw_playlist = playlist
+        # FFmpeg rounds subsecond durations to an integer. A zero target is
+        # invalid HLS and can make receivers spin or reject the live playlist.
+        self.playlist = re.sub(rb'(?m)^#EXT-X-TARGETDURATION:0$', b'#EXT-X-TARGETDURATION:1', playlist)
         self.last_audio = time.monotonic()
         # Give the receiver enough history to select a stable live position.
         if len(names) >= 6:
@@ -179,6 +183,7 @@ class HlsStream(Stream):
             await super().close_owned()
         finally:
             self.playlist = b''
+            self.raw_playlist = b''
             self.segments.clear()
             if self.directory:
                 shutil.rmtree(self.directory)

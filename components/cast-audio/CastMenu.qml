@@ -92,6 +92,8 @@ Rectangle {
                     Layout.fillWidth: true
                     CastText { Layout.fillWidth: true; text: qsTr("Speakers"); font.weight: Font.DemiBold }
                     ActionButton {
+                        objectName: "castAudioRefresh"
+                        visible: root.idle
                         text: root.state.scanning ? qsTr("Searching…") : qsTr("Refresh")
                         flat: true
                         enabled: !root.state.scanning && root.idle

@@ -39,12 +39,16 @@ class Controller:
         self.publish()
 
     def refresh(self):
-        if self.closing or (self.discovery and not self.discovery.done()) or time.monotonic() - self.last_scan < 10:
+        if (self.closing or self.state not in ("Off", "Error") or
+                (self.discovery and not self.discovery.done()) or time.monotonic() - self.last_scan < 10):
             return
         self.last_scan = time.monotonic()
         self.discovery = asyncio.create_task(self.discover())
 
     async def discover(self):
+        # A queued idle refresh may run after Start has already taken over.
+        if self.closing or self.state not in ("Off", "Error"):
+            return
         self.scanning = True
         sources_ready = False
         self.publish()
@@ -97,9 +101,16 @@ class Controller:
 
     async def start(self, receiver):
         self.receiver = receiver
+        self.scanning = False
         self.status("Connecting…", "Checking receiver and output monitor…")
         try:
             async with asyncio.timeout(60):
+                # Discovery owns a separate catt child. Stop and reap it before
+                # capturing; opening the menu must not scan during playback.
+                discovery, self.discovery = self.discovery, None
+                if discovery and not discovery.done():
+                    discovery.cancel()
+                    await asyncio.gather(discovery, return_exceptions=True)
                 self.sources = await audio.sources(self.processes)
                 self.source = audio.select(self.sources, self.prefs.values["source"])
                 # Check before capturing; Cast.start checks again before loading.

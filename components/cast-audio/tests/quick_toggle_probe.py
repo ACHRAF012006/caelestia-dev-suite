@@ -87,9 +87,10 @@ ShellRoot {
                 drawers.utilities = false;
                 fakeCast.openMenuRequested();
                 root.check(drawers.utilities, "IPC opens the Quick Toggles drawer");
-                fakeCast.snapshot = {state: "Casting", receiver: "VLAN Speaker", devices: [], settings: {}};
+                fakeCast.snapshot = {state: "Casting", scanning: true, receiver: "VLAN Speaker", devices: [], settings: {}};
             } else if (root.phase === 2) {
                 root.check(menu && menu.state.state === "Casting", "live state stays in embedded menu");
+                root.check(!root.findItem(menu, "castAudioRefresh").visible, "active sessions never show a scanning action");
                 GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: false}];
             } else if (root.phase === 3) {
                 root.check(!menu, "Nexus setting hides row");

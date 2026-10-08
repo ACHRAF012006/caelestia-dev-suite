@@ -113,6 +113,28 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         await stream.close()
         self.assertFalse(folder.exists())
 
+    async def test_subsecond_live_playlist_uses_valid_target_and_does_not_reread_unchanged_audio(self):
+        stream = HlsStream(self.processes, "127.0.0.1", "127.0.0.1")
+        stream.directory = Path(self.temp.name) / "segments"
+        stream.directory.mkdir()
+        self.addAsyncCleanup(stream.close)
+        names = [f"segment-{n}.ts" for n in range(6)]
+        for name in names:
+            (stream.directory/name).write_bytes(b"encoded audio")
+        raw = "#EXTM3U\n#EXT-X-TARGETDURATION:0\n" + "".join(f"#EXTINF:0.5,\n{name}\n" for name in names)
+        (stream.directory/"live.m3u8").write_text(raw)
+        stream.read_snapshot()
+        self.assertIn(b"#EXT-X-TARGETDURATION:1", stream.playlist)
+        self.assertTrue(stream.ready.is_set())
+        audio_time = stream.last_audio
+        # If unchanged snapshots accidentally re-read, these now-missing
+        # segments would fail and falsely count as fresh capture.
+        stream.segments.clear()
+        for name in names:
+            (stream.directory/name).unlink()
+        stream.read_snapshot()
+        self.assertEqual(stream.last_audio, audio_time)
+
     async def test_hls_http_serves_only_the_current_session_with_finite_responses(self):
         stream = HlsStream(self.processes, "127.0.0.1", "127.0.0.1")
         stream.playlist = b"#EXTM3U\nsegment-1.ts\n"
@@ -188,6 +210,59 @@ class TempCase(unittest.IsolatedAsyncioTestCase):
         controller.begin("manual:10.20.0.8")
         await controller.operation
         controller.start.assert_awaited_once()
+
+    async def test_connect_cancels_and_reaps_the_running_discovery_child(self):
+        controller = Controller(self.prefs, self.processes, lambda value: snapshots.append(value))
+        snapshots = []
+        entered = asyncio.Event()
+        child = None
+        async def scan(timeout):
+            nonlocal child
+            child = await self.processes.spawn([sys.executable, "-c", "import time;time.sleep(30)"])
+            entered.set()
+            try:
+                await child.wait()
+            finally:
+                await self.processes.end(child)
+        controller.cast.scan = scan
+        stream = AsyncMock()
+        stream.url, stream.receiver_reads = "our-session", 1
+        async def capture(*args):
+            self.assertFalse(self.processes.children)
+            self.assertIsNotNone(child.returncode)
+        stream.start.side_effect = capture
+        controller.cast.info = AsyncMock(side_effect=[{"app_id": "CC1AD845", "player_state": "IDLE"},
+            {"app_id": "CC1AD845", "player_state": "PLAYING", "content_id": stream.url}])
+        controller.cast.start = AsyncMock()
+        controller.cast.stop_owned = AsyncMock()
+        with patch("controller.audio.sources", new=AsyncMock(return_value=[{"id": "output", "name": "Output", "monitor": "output.monitor", "default": True}])), \
+             patch("controller.HlsStream", return_value=stream), patch("controller.route", return_value="192.168.1.2"):
+            controller.refresh()
+            discovery = controller.discovery
+            await asyncio.wait_for(entered.wait(), 1)
+            self.assertTrue(controller.scanning)
+            await controller.start({"id": "receiver", "host": "192.168.1.5", "name": "Speaker"})
+            self.assertTrue(discovery.cancelled())
+            self.assertIsNone(controller.discovery)
+            self.assertEqual(controller.state, "Casting")
+            self.assertFalse(controller.scanning)
+            self.assertTrue(all(not value["scanning"] for value in snapshots if value["state"] in ("Connecting…", "Casting")))
+            await controller.close()
+
+    async def test_visible_and_manual_refresh_never_scan_an_active_session(self):
+        controller = Controller(self.prefs, self.processes, lambda value: None)
+        controller.cast.scan = AsyncMock()
+        for state in ("Connecting…", "Casting", "Stopping…"):
+            controller.state = state
+            controller.last_scan = -10
+            await controller.handle({"action": "visible", "value": True})
+            await controller.handle({"action": "refresh"})
+            # Also reject a refresh task queued before the state changed.
+            await controller.discover()
+            self.assertIsNone(controller.discovery)
+            self.assertFalse(controller.scanning)
+            self.assertEqual(controller.last_scan, -10)
+        controller.cast.scan.assert_not_called()
 
     async def test_discovery_does_not_hide_playback_failure(self):
         self.prefs.save({"manual_devices": [{"name": "Speaker", "host": "10.20.0.8"}]})
