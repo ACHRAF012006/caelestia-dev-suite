@@ -12,25 +12,25 @@ Button {
     property bool motion: true
     property bool destructive: false
     property string description: text
-    implicitHeight: label.implicitHeight + Tokens.padding.medium * 2
-    implicitWidth: label.implicitWidth + Tokens.padding.medium * 2
-    padding: Tokens.padding.medium
+    implicitHeight: label.implicitHeight + Tokens.padding.small * 2
+    implicitWidth: label.implicitWidth + Tokens.padding.small * 2
+    padding: Tokens.padding.small
     hoverEnabled: true
     Accessible.name: description
     ToolTip.visible: hovered && description.length > 0
     ToolTip.text: description
     contentItem: Row {
         id: label
-        spacing: Tokens.spacing.small
-        MaterialIcon { visible: !!root.symbol; text: root.symbol; color: root.destructive ? Colours.palette.m3error : root.selected ? Colours.palette.m3onSecondaryContainer : Colours.palette.m3onSurfaceVariant; fontStyle: Tokens.font.icon.small }
-        StyledText { visible: !!root.text; text: root.text; color: root.selected ? Colours.palette.m3onSecondaryContainer : Colours.palette.m3onSurfaceVariant }
+        spacing: Tokens.spacing.extraSmall
+        MaterialIcon { visible: !!root.symbol; text: root.symbol; color: root.destructive ? Colours.palette.m3error : root.selected ? Colours.palette.m3primary : Colours.palette.m3onSurfaceVariant; fontStyle: Tokens.font.icon.small }
+        StyledText { visible: !!root.text; text: root.text; font: Tokens.font.body.small; color: root.selected ? Colours.palette.m3primary : Colours.palette.m3onSurfaceVariant }
     }
-    background: Rectangle {
-        radius: Tokens.rounding.small
-        color: root.selected ? Colours.palette.m3secondaryContainer : root.hovered || root.down ? Colours.palette.m3surfaceContainerHighest : Colours.palette.m3surfaceContainer
+    background: StyledRect {
+        radius: Tokens.rounding.full
+        color: root.selected ? Qt.alpha(Colours.palette.m3primary, 0.13) : root.hovered || root.down ? Colours.tPalette.m3surfaceContainerHighest : "transparent"
         border.width: root.activeFocus ? 1 : 0
         border.color: Colours.palette.m3primary
         opacity: root.enabled ? 1 : 0.5
-        Behavior on color { ColorAnimation { duration: root.motion ? Tokens.anim.durations.small : 0 } }
+        Behavior on color { ColorAnimation { duration: root.motion ? Math.min(160, Tokens.anim.durations.small) : 0 } }
     }
 }

@@ -14,5 +14,5 @@ TextArea {
     wrapMode: TextEdit.Wrap
     selectByMouse: true
     padding: Tokens.padding.medium
-    background: Rectangle { radius: Tokens.rounding.small; color: Colours.palette.m3surfaceContainer }
+    background: Rectangle { radius: Tokens.rounding.large; color: Colours.tPalette.m3surfaceContainerHigh }
 }

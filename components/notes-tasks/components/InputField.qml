@@ -13,8 +13,8 @@ TextField {
     padding: Tokens.padding.medium
     selectByMouse: true
     background: Rectangle {
-        radius: Tokens.rounding.small
-        color: Colours.palette.m3surfaceContainer
+        radius: Tokens.rounding.large
+        color: Colours.tPalette.m3surfaceContainerHigh
         border.width: root.activeFocus ? 1 : 0
         border.color: Colours.palette.m3primary
     }

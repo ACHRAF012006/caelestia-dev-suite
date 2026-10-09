@@ -91,7 +91,7 @@ The automated suite uses temporary paths. The separate desktop acceptance helper
 
 Version 0.5 handles UTF-8 text packages, including SVG assets. Raster/binary package assets, archive import, compiled application build pipelines, KWin/Plasma package adapters and arbitrary QML module destinations are not implemented. Python/QML/shell applications, commands, Python/shell services and verified Caelestia Quickshell plugins are supported. Static validation checks Python syntax and metadata; it cannot prove code safety or guarantee QML imports compile. Python dependency preparation runs as a separately reviewed synchronous operation and can temporarily block the UI. App PID detection is best effort through `/proc`; applications that replace themselves or fork away from installed paths may not be detected.
 
-Start future work with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md). No Notes app is included. Animated Timer source is bundled for the dedicated adapter tests; published components remain independent runtimes.
+Start future work with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md). Notes & Tasks is an independent dashboard component. Animated Timer source is bundled for the dedicated adapter tests; published components remain independent runtimes.
 
 Manager 0.6.1 gives each component a consistent icon in Components and the Store,
 including bundled artwork for Cast Audio, TouchDeck and Animated Timer. Declared
@@ -109,7 +109,7 @@ legacy target, and preserves lifecycle backups/recovery/dirty-host protection.
 Only verified Caelestia KDE v2.5.1 is currently supported. Read
 [the integration contract](docs/DASHBOARD_INTEGRATION.md).
 
-[Notes & Tasks 0.1.0](plugins/notes-tasks/README.md) supplies native notes, tasks,
+[Notes & Tasks 0.2.0](plugins/notes-tasks/README.md) supplies native notes, tasks,
 quick capture, search, inline editors, archives, subtasks and local autosave. Its
 shared helper and personal-data directory survive updates and uninstall. Update
 Dev Manager to 0.7.0 before reviewing Store installation. Publication does not

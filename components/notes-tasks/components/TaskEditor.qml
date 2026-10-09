@@ -16,6 +16,7 @@ ColumnLayout {
     signal closeRequested()
     signal deleteRequested(string kind, string recordId)
     signal moveRequested(string recordId, int direction)
+    function focusTitle() { title.forceActiveFocus(); }
     function load() {
         entry = controller.record("tasks", recordId);
         if (!entry) { closeRequested(); return; }

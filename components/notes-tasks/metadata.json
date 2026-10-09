@@ -1,8 +1,8 @@
 {
   "id": "notes-tasks",
   "name": "Notes & Tasks",
-  "version": "0.1.0",
-  "description": "Native dashboard notes and tasks with fast capture, local autosave and shared monitor state.",
+  "version": "0.2.0",
+  "description": "Native dashboard capture, paper-like note widgets and lightweight tasks with shared local autosave.",
   "type": "quickshell",
   "ui": "main.qml",
   "icon": "edit_note",

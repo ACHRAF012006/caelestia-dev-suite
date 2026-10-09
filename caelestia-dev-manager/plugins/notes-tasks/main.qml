@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import Caelestia.Config
 import Quickshell
 import Quickshell.Io
 
@@ -13,7 +14,7 @@ Scope {
     property bool saving: false
     property string error: "Starting Notes & Tasks…"
     property int revision: 0
-    readonly property bool motion: settings.animation
+    readonly property bool motion: settings.animation && Tokens.anim.durations.small > 0
     signal reset()
     signal changed(string kind, string recordId, var entry)
     signal created(string requestId, string kind, string recordId)

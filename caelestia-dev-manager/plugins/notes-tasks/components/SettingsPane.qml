@@ -11,9 +11,11 @@ ScrollView {
     required property var controller
     signal closeRequested()
     function preference(key, value) { const values = {}; values[key] = value; controller.send({action: "settings", values: values}); }
+    padding: Tokens.padding.large
+    background: StyledRect { color: Colours.tPalette.m3surfaceContainer; radius: Tokens.rounding.extraLarge }
     clip: true
     ColumnLayout {
-        width: parent.width
+        width: root.availableWidth
         spacing: Tokens.spacing.medium
         RowLayout {
             Layout.fillWidth: true

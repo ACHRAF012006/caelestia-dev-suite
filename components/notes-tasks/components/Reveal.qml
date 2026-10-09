@@ -14,7 +14,7 @@ Item {
     visible: expanded || implicitHeight > 0
     enabled: expanded
     Item { id: body; width: root.width; height: root.contentHeight }
-    Behavior on implicitHeight { Anim { duration: root.motion ? Tokens.anim.durations.small : 0; type: Anim.FastSpatial } }
+    Behavior on implicitHeight { Anim { duration: root.motion ? Math.min(180, Tokens.anim.durations.small) : 0; type: Anim.FastSpatial } }
     opacity: expanded ? 1 : 0
-    Behavior on opacity { Anim { duration: root.motion ? Tokens.anim.durations.small : 0; type: Anim.FastEffects } }
+    Behavior on opacity { Anim { duration: root.motion ? Math.min(180, Tokens.anim.durations.small) : 0; type: Anim.FastEffects } }
 }

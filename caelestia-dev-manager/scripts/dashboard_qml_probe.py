@@ -5,6 +5,7 @@ Copies installed host source; only the copy is transformed. Private XDG director
 and D-Bus sessions prevent production shell changes and user data access.
 """
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -19,6 +20,7 @@ HOST = Path.home() / '.config/quickshell/caelestia'
 PROBE = r'''
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtTest
 import Quickshell
 import qs.services
 import qs.components
@@ -35,6 +37,20 @@ ShellRoot {
     property string noteId: ""
     property string taskId: ""
     property var windows: []
+    property bool deferredObserved: false
+    property var delayedModel: null
+    SignalSpy { id: retained; signalName: "countChanged" }
+    Connections {
+        target: root.controller
+        function onChanged(kind, id, entry) {
+            if (root.stage === 22 && kind === "tasks" && id === root.taskId && entry?.completed) {
+                Qt.callLater(() => {
+                    root.check(root.child(root.windows[0].notesPage, "notesTasksTasksList").count === 3, "completed row retained during animation");
+                    root.deferredObserved = true;
+                });
+            }
+        }
+    }
     function check(ok, message) { if (!ok) { console.error("PROBE FAILED: " + message); Qt.exit(1); } }
     function child(parent, name) { return CUtils.findChild(parent, name); }
     QtObject {
@@ -54,10 +70,14 @@ ShellRoot {
         check(component.status === Component.Ready, component.errorString());
         const notes = component.createObject(root, {controller: fixture, kind: "notes"});
         check(notes.model.count === 299 && notes.model.get(0).recordId === "n150", "large notes, pinned first, archive exclusion");
+        retained.target = notes.model; retained.clear();
         notes.query = "body tag"; check(notes.model.count === 299, "multi-word in-memory search");
+        check(retained.count === 0, "unchanged search results keep model rows");
         notes.filter = "archived"; check(notes.model.count === 1, "archive filter");
         notes.filter = "active"; notes.query = "note 149"; check(notes.model.count === 1, "large title search");
         notes.sortOrder = "title"; notes.query = ""; check(notes.model.get(0).recordId === "n150", "pinned remains first when sorted");
+        fixture.notes["n150"] = Object.assign({}, fixture.notes["n150"], {title: "Refreshed pinned note"}); fixture.reset();
+        check(notes.model.get(0).entry.title === "Refreshed pinned note", "snapshot refresh updates retained records");
         const tasks = component.createObject(root, {controller: fixture, kind: "tasks"});
         check(tasks.model.count === 1000, "2000-task open filter");
         tasks.filter = "all"; check(tasks.model.count === 2000, "all tasks includes completed");
@@ -70,7 +90,18 @@ ShellRoot {
         check(tasks.model.count === 2000 && tasks.model.get(0).recordId === old && tasks.model.get(tasks.positions["t1"]).entry.title === "Edited", "single-record update in large model");
         const moved = Object.assign({}, changed, {completed: true}); fixture.tasks["t1"] = moved; fixture.changed("tasks", "t1", moved);
         check(tasks.model.get(tasks.positions["t1"]).group === "Completed", "incremental completion movement");
-        fixture.changed("tasks", "t1", null); check(tasks.model.count === 1999 && tasks.positions["t1"] === undefined, "incremental deletion");
+        delete fixture.tasks["t1"]; fixture.changed("tasks", "t1", null); check(tasks.model.count === 1999 && tasks.positions["t1"] === undefined, "incremental deletion");
+        const dated = Object.assign({}, fixture.tasks["t3"], {due: {date: "2099-01-01", time: ""}});
+        fixture.tasks["t3"] = dated; fixture.changed("tasks", "t3", dated);
+        tasks.day = "2099-01-02";
+        check(tasks.model.get(tasks.positions["t3"]).group === "Today", "midnight refresh updates retained task groups");
+        retained.target = null;
+        root.delayedModel = component.createObject(root, {controller: fixture, kind: "tasks", completionDelay: 180});
+        const before = root.delayedModel.model.count;
+        const completed = Object.assign({}, fixture.tasks["t3"], {completed: true});
+        fixture.tasks["t3"] = completed; fixture.changed("tasks", "t3", completed);
+        check(root.delayedModel.model.count === before && root.delayedModel.model.get(root.delayedModel.positions["t3"]).entry.completed, "completion updates row before deferred removal");
+        const undo = Object.assign({}, completed, {completed: false}); fixture.tasks["t3"] = undo; fixture.changed("tasks", "t3", undo);
         notes.destroy(); tasks.destroy();
     }
     Component.onCompleted: {
@@ -99,6 +130,31 @@ ShellRoot {
             property var screenState: ScreenState { modelData: monitor.modelData }
             property var content: null
             property var notesPage: null
+            TestCase { id: inputTest; name: "NotesInput"; when: false }
+            Rectangle {
+                id: canvas
+                z: 100; visible: false
+                width: Tokens.sizes.dashboard.mediaTabWidth; height: Tokens.sizes.dashboard.mediaTabHeight * 2
+                color: Colours.palette.m3surfaceContainerLow
+                property var page: null
+            }
+            function typeIn(field, value) {
+                field.forceActiveFocus();
+                inputTest.keyClick(Qt.Key_A, Qt.ControlModifier);
+                for (const letter of value) inputTest.keyClick(letter, Qt.NoModifier, 0);
+            }
+            function tilesMatch() {
+                const grid = root.child(notesPage, "notesTasksNotesList");
+                for (let i = 0; i < grid.count; ++i) {
+                    const tile = grid.itemAtIndex(i);
+                    if (tile) {
+                        root.check(tile.recordId === grid.model.get(i).recordId, "stable grid delegate after insertion/filter");
+                        root.check(tile.opacity > 0.99 && tile.scale > 0.99, "reused grid cell restores visual state");
+                        const card = root.child(tile, "notesTasksNoteCard");
+                        root.check(card.entry.id === tile.recordId && card.entry.title === root.controller.notes[tile.recordId].title, "card uses current controller record");
+                    }
+                }
+            }
             Item {
                 anchors.fill: parent
                 property var screen: monitor.modelData
@@ -151,16 +207,18 @@ ShellRoot {
                     root.check(noteList.itemAtIndex(0) !== null && noteList.itemAtIndex(0).height > 0, "note delegate survives search/reuse");
                     root.check(notesPage.narrow, "responsive stacked layout");
                     const notes = root.child(notesPage, "notesTasksNotesPane"), tasks = root.child(notesPage, "notesTasksTasksPane");
-                    root.check(tasks.y > notes.y, "narrow panes stack");
+                    root.check(tasks.mapToItem(notesPage, 0, 0).y > notes.mapToItem(notesPage, 0, 0).y, "narrow panes stack");
                     root.check(notes.width > 0 && tasks.width <= notesPage.width, "stacked panes stay inside page");
                     const capture = root.child(notesPage, "notesTasksCapture");
                     root.child(notesPage, "notesTasksAdd").clicked();
+                    root.check(root.child(notesPage, "notesTasksQuickCapture").kind === "notes", "plus defaults to note capture");
+                    root.child(notesPage, "notesTasksQuickCapture").open("tasks");
                     capture.text = "Enter-created task"; capture.accepted();
                 } else if (stage === 7) {
                     root.check(Object.values(root.controller.tasks).some(t => t.title === "Enter-created task"), "Enter quick capture");
                     root.child(notesPage, "notesTasksTasksPane").filter = "completed";
                 } else if (stage === 8) {
-                    root.check(root.child(notesPage, "notesTasksTasksList").count === 1, "completed filter");
+                    root.check(root.child(notesPage, "notesTasksTasksList").count === 2, "completed filter");
                     root.child(notesPage, "notesTasksTasksPane").filter = "today";
                 } else if (stage === 9) {
                     root.check(root.child(notesPage, "notesTasksTasksList").count === 1, "today filter");
@@ -180,13 +238,81 @@ ShellRoot {
                     // Native notch still opens Timer at its actual index.
                     wrapper.openTimerTab();
                     root.check(screenState.dashboardTab === content.dashboardTabs.findIndex(tab => tab.id === "timer"), "Timer notch routing");
-                    const screenshot = Quickshell.env("NOTES_PROBE_SCREENSHOT");
-                    if (screenshot && modelData === Quickshell.screens[0]) {
-                        screenState.dashboardTab = content.dashboardTabs.findIndex(tab => tab.id === "notes-tasks");
-                        notesPage.width = Tokens.sizes.dashboard.mediaTabWidth; notesPage.height = Tokens.sizes.dashboard.mediaTabHeight;
-                        root.child(notesPage, "notesTasksTasksPane").selectedId = "";
-                        notesPage.grabToImage(result => result.saveToFile(screenshot));
+                    screenState.dashboardTab = content.dashboardTabs.findIndex(tab => tab.id === "notes-tasks");
+                    notesPage.width = Tokens.sizes.dashboard.mediaTabWidth; notesPage.height = notesPage.implicitHeight;
+                    root.child(notesPage, "notesTasksTasksPane").selectedId = "";
+                    root.child(notesPage, "notesTasksQuickCapture").close();
+                } else if (stage === 16) {
+                    root.child(notesPage, "notesTasksTasksPane").filter = "active";
+                    if (modelData === Quickshell.screens[0]) {
+                        canvas.page = Qt.createComponent(Quickshell.env("NOTES_PROBE_PLUGIN") + "/DashboardPage.qml").createObject(canvas, {controller: root.controller});
+                        canvas.page.width = Qt.binding(() => canvas.width); canvas.page.height = Qt.binding(() => canvas.height);
+                        canvas.visible = true;
                     }
+                } else if (stage === 17) {
+                    root.check(!root.delayedModel.model.get(root.delayedModel.positions["t3"]).entry.completed && !Object.keys(root.delayedModel.pending).length, "rapid completion undo settles without removal");
+                    tilesMatch();
+                    const screenshot = Quickshell.env("NOTES_PROBE_SCREENSHOT");
+                    if (screenshot && modelData === Quickshell.screens[0]) canvas.grabToImage(result => result.saveToFile(screenshot));
+                } else if (stage === 18 && modelData === Quickshell.screens[0]) {
+                    canvas.width = 380; canvas.height = 760;
+                } else if (stage === 19 && modelData === Quickshell.screens[0]) {
+                    const screenshot = Quickshell.env("NOTES_PROBE_SCREENSHOT");
+                    if (screenshot) canvas.grabToImage(result => result.saveToFile(screenshot.replace(/\.png$/, "-narrow.png")));
+                } else if (stage === 20 && modelData === Quickshell.screens[0]) {
+                    canvas.visible = false;
+                    notesPage.width = Tokens.sizes.dashboard.mediaTabWidth; notesPage.height = notesPage.implicitHeight;
+                    const pane = root.child(notesPage, "notesTasksNotesPane");
+                    pane.openRecord(root.noteId);
+                    typeIn(root.child(notesPage, "notesTasksNoteTitle"), "Edited title");
+                    typeIn(root.child(notesPage, "notesTasksNoteBody"), "Edited body");
+                    inputTest.keyClick(Qt.Key_Return, Qt.ControlModifier);
+                } else if (stage === 21 && modelData === Quickshell.screens[0]) {
+                    root.check(root.controller.notes[root.noteId].title === "Edited title" && root.controller.notes[root.noteId].text === "Edited body", "keyboard inline editing autosaves");
+                    root.check(!root.child(notesPage, "notesTasksNotesPane").selectedId, "Ctrl+Enter closes inline editor");
+
+                    root.child(notesPage, "notesTasksNotesPane").tag = "linux";
+                } else if (stage === 22 && modelData === Quickshell.screens[0]) {
+                    root.check(root.child(notesPage, "notesTasksNotesList").count === 1, "exact tag filter");
+                    const pane = root.child(notesPage, "notesTasksNotesPane"); pane.tag = "";
+                    const tasks = root.child(notesPage, "notesTasksTasksPane"), list = root.child(notesPage, "notesTasksTasksList");
+                    tasks.filter = "active";
+                    const button = root.child(list.itemAtIndex(0), "notesTasksComplete");
+                    root.check(button !== null, "task checkbox exists"); button.clicked();
+                } else if (stage === 23 && modelData === Quickshell.screens[0]) {
+                    root.check(root.deferredObserved && root.controller.tasks[root.taskId].completed, "task completion action persisted after visual hold");
+                    root.check(root.child(notesPage, "notesTasksTasksList").count === 2, "completion leaves open view after animation");
+                    root.controller.edit("tasks", root.taskId, {completed: false});
+                    notesPage.requestDelete("notes", root.noteId);
+                    root.child(notesPage, "notesTasksConfirmDelete").clicked();
+                } else if (stage === 24 && modelData === Quickshell.screens[0]) {
+                    root.check(!root.controller.notes[root.noteId] && !root.child(notesPage, "notesTasksNotesPane").selectedId, "delete removes note and closes editor");
+                    root.check(!root.controller.tasks[root.taskId].completed, "uncomplete retained task");
+                    GlobalConfig.appearance.font.scale = 1.3;
+                    notesPage.width = 380; notesPage.height = 600;
+                    root.child(notesPage, "notesTasksSearch").text = "linux";
+                } else if (stage === 25 && modelData === Quickshell.screens[0]) {
+                    tilesMatch();
+                    const search = root.child(notesPage, "notesTasksSearch");
+                    root.check(root.child(notesPage, "notesTasksNotesList").count === 1, "debounced search with font scaling");
+                    root.check(search.mapToItem(notesPage, search.width, 0).x <= notesPage.width, "expanded search fits narrow page");
+                    const tile = root.child(notesPage, "notesTasksNotesList").itemAtIndex(0), card = root.child(tile, "notesTasksNoteCard");
+                    root.check(card.height <= tile.height && card.width <= notesPage.width, "scaled-font note stays within its cell");
+                    search.text = ""; GlobalConfig.appearance.font.scale = 1;
+                    GlobalConfig.appearance.anim.durations.scale = 0;
+                } else if (stage === 26 && modelData === Quickshell.screens[0]) {
+                    root.check(!root.controller.motion, "global animation scale respected");
+                    GlobalConfig.appearance.anim.durations.scale = 1;
+                    notesPage.forceActiveFocus(); inputTest.keyClick(Qt.Key_F, Qt.ControlModifier);
+                    root.check(root.child(notesPage, "notesTasksSearch").activeFocus, "Ctrl+F focuses expanding search");
+                    notesPage.forceActiveFocus(); inputTest.keyClick(Qt.Key_N, Qt.ControlModifier | Qt.ShiftModifier);
+                    root.check(root.child(notesPage, "notesTasksQuickCapture").kind === "tasks", "Ctrl+Shift+N captures tasks");
+                    notesPage.forceActiveFocus(); inputTest.keyClick(Qt.Key_N, Qt.ControlModifier);
+                    root.check(root.child(notesPage, "notesTasksQuickCapture").kind === "notes" && root.child(notesPage, "notesTasksCapture").activeFocus, "Ctrl+N focuses note capture");
+                    typeIn(root.child(notesPage, "notesTasksCapture"), "Keyboard captured note"); inputTest.keyClick(Qt.Key_Return, Qt.ControlModifier);
+                } else if (stage === 27 && modelData === Quickshell.screens[0]) {
+                    root.check(Object.values(root.controller.notes).some(n => n.text === "Keyboard captured note"), "Ctrl+Enter captures note body");
+                    root.controller.send({action: "flush"});
                 }
             }
         }
@@ -199,6 +325,7 @@ ShellRoot {
                 return;
             }
             if (root.stage === 0) {
+                root.check(root.controller.notes["legacy-note"].text === "Version 1 retained" && root.controller.tasks["legacy-task"].completed, "existing v1 notes and tasks load unchanged");
                 root.timerController.send({action: "preferences", values: {sound: false, notification: false}});
             }
             ++root.stage;
@@ -209,8 +336,8 @@ ShellRoot {
                 root.controller.send({action: "create", kind: "tasks", values: {title: "Today task", due: {date: day, time: ""}}});
                 root.controller.send({action: "create", kind: "tasks", values: {title: "Upcoming task", due: {date: "2099-01-01", time: ""}}});
             } else if (root.stage === 3) {
-                root.noteId = Object.keys(root.controller.notes)[0];
-                root.taskId = Object.keys(root.controller.tasks)[0];
+                root.noteId = Object.values(root.controller.notes).find(n => n.title === "Native notes").id;
+                root.taskId = Object.values(root.controller.tasks).find(t => t.title === "Today task").id;
                 root.controller.send({action: "subtask-create", kind: "tasks", id: root.taskId, title: "First step"});
             } else if (root.stage === 6) {
                 const id = Object.values(root.controller.tasks).find(t => t.title === "Upcoming task").id;
@@ -224,9 +351,49 @@ ShellRoot {
             } else if (root.stage === 15) {
                 root.check(!root.controller.saving, "debounced persistence acknowledged");
                 root.verifyLargeModels();
-                console.log("DASHBOARD QML PROBE PASSED: two monitors, scale 1.25, native tabs, Timer routing, notes/tasks/search/edit/subtasks/quick capture/settings/stacking, 300-note/2000-task models");
+                root.controller.send({action: "settings", values: {animation: true, compact: false}});
+                for (const values of [
+                    {title: "A calmer workspace", text: "Less noise. More room to think.\n\nBuild a dashboard that feels like home.", tags: ["ideas", "dev"], pinned: true},
+                    {title: "Weekend plans", text: "Take a long walk\nPick up coffee\nMake something small", tags: ["life"]},
+                    {title: "Things to explore", text: "An offline reading corner.\nA small garden.\nAn evening without notifications.", tags: ["ideas"]},
+                    {title: "Linux setup", text: "Keep the useful bits.\nDocument the rest.", tags: ["linux", "dev"]}
+                ]) root.controller.send({action: "create", kind: "notes", values: values});
+                const d = new Date(); const day = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+                root.controller.send({action: "create", kind: "tasks", values: {title: "Clear the desk", completed: true, due: {date: day, time: ""}}});
+                const captures = Object.values(root.controller.tasks).filter(t => t.title === "Enter-created task");
+                captures.forEach((t, i) => root.controller.edit("tasks", t.id, {title: i === 0 ? "Sketch a new idea" : "Take a short walk"}));
+                root.controller.send({action: "flush"});
+            } else if (root.stage === 28) {
+                root.check(!root.controller.saving, "UI changes flushed before shell restart");
+                console.log("DASHBOARD QML PROBE PASSED: two monitors, scale 1.25, native tabs, Timer routing, notes/tasks/search/edit/subtasks/quick capture/settings/stacking, keyboard CRUD, delayed completion/undo, scaled fonts, global reduced motion, 300-note/2000-task models");
                 Qt.quit();
             }
+        }
+    }
+}
+'''
+
+
+RESTART_PROBE = r'''
+import QtQuick
+import Quickshell
+
+ShellRoot {
+    id: root
+    property var controller: null
+    property int attempts: 0
+    Component.onCompleted: controller = Qt.createComponent(Quickshell.env("NOTES_PROBE_PLUGIN") + "/main.qml").createObject(root)
+    Timer {
+        interval: 100; repeat: true; running: true
+        onTriggered: {
+            if (!root.controller?.healthy) { if (++root.attempts > 50) { console.error("PROBE FAILED: restart helper " + root.controller?.error); Qt.exit(1); } return; }
+            const expected = JSON.parse(Quickshell.env("NOTES_PROBE_EXPECTED"));
+            const byId = (a, b) => a.id.localeCompare(b.id);
+            const same = JSON.stringify(Object.values(root.controller.notes).sort(byId)) === JSON.stringify(expected.notes.sort(byId))
+                && JSON.stringify(Object.values(root.controller.tasks).sort(byId)) === JSON.stringify(expected.tasks.sort(byId))
+                && JSON.stringify(root.controller.settings) === JSON.stringify(expected.settings);
+            if (!same) { console.error("PROBE FAILED: shell restart snapshot mismatch"); Qt.exit(1); }
+            else { console.log("NOTES SHELL RESTART PASSED: v1 data and all UI edits/settings retained"); Qt.quit(); }
         }
     }
 }
@@ -256,11 +423,21 @@ def main():
         originals = {n: (ROOT / 'tests/fixtures/caelestia-kde' / n).read_text() for n in FILES}
         for name, value in sources(originals, pages, True, paths).items(): (copied / name).write_text(value)
         (copied / 'Probe.qml').write_text(PROBE)
+        stamp = "2026-10-01T12:00:00.000+00:00"
+        legacy = {"schemaVersion": 1, "revision": 2, "settings": {"defaultSection": "both", "showCompleted": False, "taskSort": "manual", "noteSort": "updated", "animation": True, "compact": False, "confirmDelete": True},
+                  "notes": [{"id": "legacy-note", "title": "Older note", "content": {"format": "plain", "text": "Version 1 retained"}, "tags": ["legacy"], "pinned": False, "archived": True, "createdAt": stamp, "updatedAt": stamp, "extensions": {}}],
+                  "tasks": [{"id": "legacy-task", "title": "Older completed task", "details": "", "tags": [], "completed": True, "completedAt": stamp, "order": 1024, "due": {"date": "", "time": ""}, "priority": 0, "subtasks": [], "recurrence": None, "projectId": None, "createdAt": stamp, "updatedAt": stamp, "extensions": {}}]}
+        personal = paths.data / 'caelestia-components/notes-tasks'; personal.mkdir(parents=True)
+        (personal / 'data.json').write_text(json.dumps(legacy), encoding='utf-8')
         env = dict(os.environ, QT_QPA_PLATFORM='wayland', QSG_RHI_BACKEND='software', QT_QUICK_BACKEND='software', QS_DISABLE_CRASH_HANDLER='1',
                    QML2_IMPORT_PATH=str(Path.home() / '.local/lib/qt6/qml') + ':' + str(copied),
                    NOTES_PROBE_PLUGIN=(plugins / 'notes-tasks').as_uri(), TIMER_PROBE_PLUGIN=(plugins / 'animated-timer').as_uri(), CALENDAR_PROBE_PLUGIN=calendar.as_uri())
         for key, directory in [('XDG_CONFIG_HOME', paths.config), ('XDG_DATA_HOME', paths.data), ('XDG_STATE_HOME', paths.state), ('XDG_CACHE_HOME', temp / 'cache'), ('XDG_RUNTIME_DIR', temp / 'runtime')]:
             directory.mkdir(parents=True, exist_ok=True, mode=0o700); env[key] = str(directory)
+        scheme = Path.home() / '.local/state/caelestia/scheme.json'
+        if scheme.is_file():
+            theme = paths.state / 'caelestia'; theme.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(scheme, theme / 'scheme.json')
         if args.screenshot: env['NOTES_PROBE_SCREENSHOT'] = str(args.screenshot.resolve())
         env['WAYLAND_DISPLAY'] = 'dashboard-test'; env.pop('DISPLAY', None)
         with open(temp / 'kwin.log', 'w') as log:
@@ -280,9 +457,25 @@ def main():
                 for p in (process, compositor):
                     if p and p.poll() is None: os.killpg(p.pid, signal.SIGTERM); p.wait(timeout=5)
         output = stdout + stderr
+        restart_output = ''
+        if process.returncode == 0 and 'DASHBOARD QML PROBE PASSED' in output and 'PROBE FAILED' not in output:
+            sys.path.insert(0, str(plugins / 'notes-tasks/helper'))
+            from domain import Model
+            from storage import decode
+            expected = Model(decode((personal / 'data.json').read_bytes())).snapshot()
+            assert any(n['id'] == 'legacy-note' and n['text'] == 'Version 1 retained' for n in expected['notes'])
+            assert any(n['text'] == 'Keyboard captured note' for n in expected['notes'])
+            assert not any(n['title'] == 'Edited title' for n in expected['notes'])
+            (copied / 'Restart.qml').write_text(RESTART_PROBE)
+            env['NOTES_PROBE_EXPECTED'] = json.dumps(expected)
+            # Headless offscreen is sufficient: this check exercises the new shell controller/helper.
+            restart_env = dict(env, QT_QPA_PLATFORM='offscreen')
+            restarted = subprocess.run(['quickshell', '--no-color', '--path', str(copied / 'Restart.qml')], env=restart_env, capture_output=True, text=True, timeout=10)
+            restart_output = restarted.stdout + restarted.stderr
+            output += restart_output
         errors = ('TypeError:', 'ReferenceError:', 'Cannot assign', 'Error loading', 'is not a type', 'Binding loop', 'PROBE FAILED', 'Unable to assign', 'Cannot create delegate', 'Required property', 'recursive rearrange', 'Cannot override FINAL')
-        success = process.returncode == 0 and 'DASHBOARD QML PROBE PASSED' in output and not any(e in output for e in errors)
-        print(output if not success else '\n'.join(line for line in output.splitlines() if 'DASHBOARD QML PROBE' in line or 'notes-tasks/' in line))
+        success = process.returncode == 0 and 'DASHBOARD QML PROBE PASSED' in output and 'NOTES SHELL RESTART PASSED' in output and not any(e in output for e in errors)
+        print(output if not success else '\n'.join(line for line in output.splitlines() if 'DASHBOARD QML PROBE' in line or 'NOTES SHELL RESTART' in line or 'notes-tasks/' in line))
         return 0 if success else 1
 
 
