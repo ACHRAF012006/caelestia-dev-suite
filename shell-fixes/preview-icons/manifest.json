@@ -1,0 +1,29 @@
+{
+  "base_commit": "e34b6957fad5ce9395841b65be9e3df180ccd65c",
+  "files": {
+    "components/effects/ColouredIcon.qml": {
+      "before": "6b0db488b4da9f35ad704fe327c1d683f593d498235d29b4b54326b4da9b204b",
+      "after": "55f47173d37c8736870ce66faddca73b3b9a34d4389b7bf6624445d1d9a264ab"
+    },
+    "components/images/WindowPreview.qml": {
+      "before": "110528af9aa332f21d53f4e1d2c887caf82a5d1dad35199fef5808af9ad28bed",
+      "after": "105942a74d8f2d3b19000651116ff9a12c2c585d0d0723169924766d267763aa"
+    },
+    "modules/bar/components/Dock.qml": {
+      "before": "70de0e31736de8033d78ea00de21ea1e024519e3899b3c67db7f2bce6fb32b7f",
+      "after": "1de6786f88b732969bfddb4e5a8c21b4b3ba6dd1334643b63528101b3388518f"
+    },
+    "modules/bar/popouts/DockHover.qml": {
+      "before": "31cd2550694fb50d1da8355796e74621fb97a41535f425649ae0d614d041b176",
+      "after": "486f1835ef4bc7ddfa0579bbef38c2c77bd9ed22cce65cbf574675e9c9aabafe"
+    },
+    "modules/launcher/items/WindowSwitcherItem.qml": {
+      "before": "550f8851155a5553475885378a6235d03e3c3702c3ca7ddacc5ec82f09f29631",
+      "after": "e6e54435ca6df99c73447682539e61628206535623694f2efadf0c74e6b618df"
+    },
+    "components/images/FallbackIcon.qml": {
+      "before": null,
+      "after": "bf50a4009e441ce0e435d9221321935124824d1820404908c976cb7acba5f8b9"
+    }
+  }
+}

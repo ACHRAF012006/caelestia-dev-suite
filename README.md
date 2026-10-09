@@ -51,3 +51,5 @@ For [Cast Audio](components/cast-audio/README.md), update Dev Manager to **0.5.1
 Edit manager code in `caelestia-dev-manager/`. Publish components in `components/<id>/` with semantic versions and strict manifests. Commit and push to `main`; the next store check discovers changes. Local downloaded/draft source under the manager's `plugins/` is ignored and never published automatically.
 
 [Manager documentation](caelestia-dev-manager/README.md) · [Component contract](caelestia-dev-manager/docs/COMPONENT_SPEC.md) · [Component Store](caelestia-dev-manager/docs/COMPONENT_STORE.md) · [TouchDeck](components/touchdeck/README.md) · [Cast Audio](components/cast-audio/README.md)
+
+[Scoped shell repairs](shell-fixes/README.md) include the preview/icon recovery fix for the verified Caelestia KDE host.
