@@ -1,7 +1,7 @@
 {
   "id": "cast-audio",
   "name": "Cast Audio",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Cast desktop or one app's audio from a themed Caelestia menu, with Fast and Balanced live profiles.",
   "type": "quickshell",
   "ui": "main.qml",

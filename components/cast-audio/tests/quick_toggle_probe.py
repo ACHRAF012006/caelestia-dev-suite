@@ -1,13 +1,16 @@
-"""Exercise the host icon with a fake receiver, isolated XDG roots and no session bus."""
+"""Test Cast alignment and interaction on a copied shell and private KWin output."""
 import argparse
 import os
+import json
+import signal
+import time
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 
 
-QML = '''import QtQuick
+QML = r'''import QtQuick
 import QtTest
 import Quickshell
 import Caelestia
@@ -22,15 +25,20 @@ ShellRoot {
     property alias card: cardItem
     property int phase: 0
     property bool failed: false
-    FloatingWindow { id: canvas; visible: true; implicitWidth: 480; implicitHeight: 600 }
+    property int panelWidth: 480
+    FloatingWindow {
+        id: canvas; visible: true; implicitWidth: 480; implicitHeight: 760
+        color: Colours.palette.m3surfaceContainerLow
+    }
+    Rectangle { id: previewCanvas; parent: canvas.contentItem; width: root.panelWidth; height: canvas.height; color: Colours.palette.m3surfaceContainerLow }
     Binding { target: ShellState; property: "shellRoot"; value: root }
     DrawerVisibilities { id: drawers; utilities: true }
     Toggles {
         id: cardItem
-        parent: canvas.contentItem
+        parent: previewCanvas
         visibilities: drawers
         popouts: null
-        width: 480
+        width: root.panelWidth
     }
     TestCase { id: pointer; when: false }
     QtObject {
@@ -57,6 +65,27 @@ ShellRoot {
         }
         return null;
     }
+    function aligned(menu) {
+        const button = findItem(menu, "castAudioExpand"), icon = findItem(menu, "castAudioHeaderIcon"), labels = findItem(menu, "castAudioHeaderLabels"), title = findItem(menu, "castAudioTitle"), status = findItem(menu, "castAudioStatus"), chevron = findItem(menu, "castAudioChevron"), settings = findItem(menu, "castAudioSettings");
+        check(root.card.width === root.panelWidth && menu.width <= root.panelWidth, "actual panel width tracks responsive fixture");
+        const center = item => item.mapToItem(menu, item.width / 2, item.height / 2).y;
+        check(button.height + 0.1 >= button.contentItem.implicitHeight + button.topPadding + button.bottomPadding, "header fits its two-line content phase=" + root.phase + " height=" + button.height + " implicit=" + button.implicitHeight + " content=" + button.contentItem.implicitHeight + " padding=" + button.topPadding + "/" + button.bottomPadding);
+        check(Math.abs(center(icon) - center(labels)) <= 0.6 && Math.abs(center(chevron) - center(labels)) <= 0.6 && Math.abs(center(settings) - center(labels)) <= 0.6, "icon, labels, chevron and settings vertically centered phase=" + root.phase + " centers=" + [center(icon), center(labels), center(chevron), center(settings)]);
+        check(icon.status === Image.Ready && Math.abs(icon.width - icon.height) < 0.1 && Math.abs(icon.paintedWidth - icon.paintedHeight) < 0.1, "cast artwork loaded without stretching");
+        check(/stroke="#([0-9a-f]{6})"/i.test(decodeURIComponent(icon.source.toString())) && Math.abs(icon.opacity - icon.tint.a) < 0.01, "SVG uses RGB tint with separate theme transparency");
+        const a = title.mapToItem(button, 0, 0), b = status.mapToItem(button, 0, 0);
+        check(Math.abs(a.x - b.x) < 0.1 && a.y >= button.topPadding - 0.1 && b.y + status.height <= button.height - button.bottomPadding + 0.1, "title/status share left edge and fit padded header title=" + a.x + "," + a.y + " status=" + b.x + "," + b.y + " height=" + status.height);
+        check(status.width > 0 && status.mapToItem(menu, status.width, 0).x <= chevron.mapToItem(menu, 0, 0).x + 0.1, "status elides before chevron");
+        check(settings.mapToItem(menu, settings.width, 0).x <= menu.width + 0.1, "settings remains inside narrow panel");
+        const text = findItem(settings, "castAudioButtonText");
+        check(text.font.pixelSize === settings.font.pixelSize && text.font.family === settings.font.family, "buttons respect configured font");
+        check(Math.abs(center(text) - center(settings)) < 0.2, "button text centered");
+    }
+    function screenshot(name, after) {
+        const path = Quickshell.env("CAST_MENU_SCREENSHOT");
+        if (path) previewCanvas.grabToImage(result => { result.saveToFile(path.replace(/\.png$/, name + ".png")); if (after) after(); });
+        else if (after) after();
+    }
     function findChoice(item, identity) {
         if (item.objectName === "castAudioSourceChoice" && item.modelData.id === identity) return item;
         for (let child of item.children || []) { const found = findChoice(child, identity); if (found) return found; }
@@ -81,10 +110,15 @@ ShellRoot {
                 root.check(!root.findItem(root.card, "castAudioQuickToggle"), "no Cast icon delegate");
                 if (!menu) { Qt.quit(); return; }
                 root.check(!menu.expanded, "menu starts collapsed");
+                root.aligned(menu); root.screenshot("-collapsed");
                 root.findItem(menu, "castAudioExpand").clicked();
                 fakeCast.snapshot = {state: "Off", message: "Choose a receiver", devices: [{id: "manual:192.168.20.8", host: "192.168.20.8", name: "VLAN Speaker", manual: true, supported: true}], sources: [{id: "app:19:player", kind: "application", name: "Player", detail: "Music"}, {id: "app:20:browser", kind: "application", name: "Browser", detail: "Video"}], settings: {}};
             } else if (root.phase === 1) {
                 root.check(menu && menu.expanded, "row expands without opening a window");
+                root.aligned(menu); root.screenshot("-expanded");
+                const glyph = root.findItem(menu, "castAudioHeaderIcon");
+                const path = Quickshell.env("CAST_MENU_SCREENSHOT");
+                if (path) glyph.grabToImage(result => result.saveToFile(path.replace(/\.png$/, "-icon.png")));
                 root.findItem(menu, "castAudioApp").clicked();
                 root.check(fakeCast.lastCommand.action === "settings" && fakeCast.lastCommand.values.source === "app:19:player", "app selection saves only the selected stream");
                 fakeCast.snapshot = Object.assign({}, fakeCast.snapshot, {settings: {source: "app:19:player"}});
@@ -114,15 +148,32 @@ ShellRoot {
             } else if (root.phase === 3) {
                 root.check(menu && menu.state.state === "Casting", "live state stays in embedded menu");
                 root.check(!root.findItem(menu, "castAudioRefresh").visible, "active sessions never show a scanning action");
-                GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: false}];
+                root.aligned(menu);
+                fakeCast.snapshot = Object.assign({}, fakeCast.snapshot, {receiver: "A very long speaker name in the far corner of the living room"});
+                root.panelWidth = 320;
             } else if (root.phase === 4) {
+                root.aligned(menu); root.screenshot("-narrow", () => GlobalConfig.appearance.font.scale = 1.4);
+            } else if (root.phase === 5) {
+                root.aligned(menu); root.screenshot("-large-font", () => {
+                    fakeCast.setMenuExpanded(false);
+                    fakeCast.snapshot = {state: "Error", message: "A long error message with useful diagnostics", devices: [], sources: [], settings: {}};
+                });
+            } else if (root.phase === 6) {
+                root.aligned(menu);
+                fakeCast.setMenuExpanded(true);
+            } else if (root.phase === 7) {
+                root.aligned(menu);
+                root.check(menu.expanded && root.findItem(menu, "castAudioStatus").text === "Needs attention", "error state preserves aligned header");
+                GlobalConfig.appearance.font.scale = 1;
+                GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: false}];
+            } else if (root.phase === 8) {
                 root.check(!menu, "Nexus setting hides row");
                 GlobalConfig.utilities.quickToggles = [{id: "castAudio", enabled: true}];
-            } else if (root.phase === 5) {
+            } else if (root.phase === 9) {
                 root.check(menu !== null, "Nexus setting restores row");
                 PluginLoader.pluginInstances = {};
                 PluginLoader.loadedCount = 0;
-            } else if (root.phase === 6) {
+            } else if (root.phase === 10) {
                 root.check(!menu, "unloading plugin removes row");
                 if (!root.failed) console.log("CAST_MENU_PASS");
                 Qt.quit();
@@ -130,7 +181,7 @@ ShellRoot {
             root.phase++;
         }
     }
-    Timer { interval: 6000; running: true; onTriggered: { console.error("CAST_MENU_FAIL timeout"); Qt.quit(); } }
+    Timer { interval: 10000; running: true; onTriggered: { console.error("CAST_MENU_FAIL timeout"); Qt.quit(); } }
 }
 '''
 
@@ -138,6 +189,7 @@ ShellRoot {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shell", type=Path, required=True, help="Caelestia KDE shell source (read only)")
+    parser.add_argument("--screenshot", type=Path, help="Write state previews using synthetic receiver data")
     args = parser.parse_args()
     patch = Path(__file__).resolve().parents[1] / "patches/quick-toggles.patch"
     with tempfile.TemporaryDirectory(prefix="cast-menu-probe-") as temporary:
@@ -152,28 +204,42 @@ def main():
         (preview / "shell.qml").write_text(QML.replace("CAST_COMPONENT_URL", __import__("json").dumps(Path(__file__).resolve().parents[1].as_uri())))
         runtime = base / "runtime"
         runtime.mkdir(mode=0o700)
-        # The host imports PanelWindow types, which require the Wayland backend
-        # even though this probe does not show any shell windows.
         env = dict(os.environ, QT_QPA_PLATFORM="wayland", DBUS_SESSION_BUS_ADDRESS="unix:path=/nonexistent",
-                   XDG_RUNTIME_DIR=str(runtime))
-        display = Path(os.environ.get("WAYLAND_DISPLAY", "wayland-0"))
-        if not display.is_absolute():
-            display = Path(os.environ["XDG_RUNTIME_DIR"]) / display
-        env["WAYLAND_DISPLAY"] = str(display)
+                   XDG_RUNTIME_DIR=str(runtime), WAYLAND_DISPLAY="cast-alignment-test",
+                   QSG_RHI_BACKEND="software", QT_QUICK_BACKEND="software", QS_DISABLE_CRASH_HANDLER="1")
+        env.pop("DISPLAY", None)
         for name in ("CONFIG", "DATA", "STATE", "CACHE"):
             env["XDG_" + name + "_HOME"] = str(base / name.lower())
             (base / name.lower()).mkdir()
         (base / "config/caelestia").mkdir()
         (base / "config/caelestia/shell.json").write_text("{}")
+        scheme = Path.home() / ".local/state/caelestia/scheme.json"
+        if scheme.is_file():
+            (base / "state/caelestia").mkdir()
+            shutil.copyfile(scheme, base / "state/caelestia/scheme.json")
+        if args.screenshot: env["CAST_MENU_SCREENSHOT"] = str(args.screenshot.resolve())
         env["QML2_IMPORT_PATH"] = os.pathsep.join([str(Path.home() / ".local/lib/qt6/qml"), str(preview), env.get("QML2_IMPORT_PATH", "")])
-        result = subprocess.run(["quickshell", "--path", str(preview), "--no-color"], env=env,
-                                capture_output=True, text=True, timeout=12)
+        with (base / "compositor.log").open("w") as log:
+            compositor = subprocess.Popen(["dbus-run-session", "--", "kwin_wayland", "--virtual", "--no-lockscreen", "--no-global-shortcuts", "--no-kactivities", "--width", "960", "--height", "1100", "--scale", "1.25", "--socket", "cast-alignment-test"],
+                                          env=env, stdout=log, stderr=log, start_new_session=True)
+            try:
+                for _ in range(100):
+                    if (runtime / "cast-alignment-test").exists(): break
+                    if compositor.poll() is not None: raise RuntimeError((base / "compositor.log").read_text())
+                    time.sleep(0.05)
+                result = subprocess.run(["quickshell", "--path", str(preview), "--no-color"], env=env,
+                                        capture_output=True, text=True, timeout=15)
+            finally:
+                if compositor.poll() is None:
+                    os.killpg(compositor.pid, signal.SIGTERM)
+                    compositor.wait(timeout=5)
         output = result.stdout + result.stderr
-        if result.returncode or "CAST_MENU_PASS" not in output or "CAST_MENU_FAIL" in output:
+        errors = ("CAST_MENU_FAIL", "ReferenceError:", "TypeError:", "Cannot assign", "Unable to assign", "Binding loop", "is not a type", "Cannot create delegate", "recursive rearrange")
+        if result.returncode or "CAST_MENU_PASS" not in output or any(error in output for error in errors):
             print("Probe exit code:", result.returncode)
             print(output)
             raise SystemExit("Cast Quick Toggle probe failed")
-        print("PASS: host QML compiles; compact row, pointer-driven inline source choices without popups, embedded IP receiver selection, Settings action, drawer opening, Nexus visibility and unload work.")
+        print("PASS: copied host on private KWin at 1.25 scale; centered icon/text/chevron/buttons, long status, 320/480 widths, 140% font, idle/casting/error and expand/collapse; compact row, pointer-driven inline source choices without popups, embedded IP receiver selection, Settings action, drawer opening, Nexus visibility and unload work.")
 
 
 if __name__ == "__main__":

@@ -39,22 +39,28 @@ Rectangle {
             ActionButton {
                 objectName: "castAudioExpand"
                 Layout.fillWidth: true
-                implicitHeight: 44
+                Layout.minimumWidth: 0
+                padding: Tokens.padding.small
                 flat: true
                 Accessible.name: root.expanded ? qsTr("Collapse Cast receivers") : qsTr("Choose Cast receiver")
                 onClicked: root.controller.setMenuExpanded(!root.expanded)
                 contentItem: RowLayout {
-                    spacing: 10
-                    CastIcon { Layout.preferredWidth: 24; Layout.preferredHeight: 24; tint: root.casting ? root.theme.accent : root.theme.foreground }
+                    spacing: Tokens.spacing.small
+                    CastIcon { objectName: "castAudioHeaderIcon"; Layout.alignment: Qt.AlignVCenter; Layout.preferredWidth: Tokens.font.icon.small.pixelSize; Layout.preferredHeight: Tokens.font.icon.small.pixelSize; tint: root.casting ? root.theme.accent : root.theme.foreground }
                     ColumnLayout {
+                        objectName: "castAudioHeaderLabels"
                         Layout.fillWidth: true
-                        spacing: 3
-                        CastText { text: qsTr("Cast Audio"); font.weight: Font.DemiBold; font.pixelSize: 15 }
-                        CastText { Layout.fillWidth: true; text: root.statusText; font.pixelSize: 11; color: root.state.state === "Error" ? root.theme.error : root.theme.secondary; elide: Text.ElideRight }
+                        Layout.minimumWidth: 0
+                        Layout.alignment: Qt.AlignVCenter
+                        spacing: Tokens.spacing.extraSmall
+                        CastText { objectName: "castAudioTitle"; Layout.fillWidth: true; text: qsTr("Cast Audio"); font.family: Tokens.font.body.medium.family; font.pixelSize: Tokens.font.body.medium.pixelSize; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                        CastText { objectName: "castAudioStatus"; Layout.fillWidth: true; text: root.statusText; font: Tokens.font.label.small; color: root.state.state === "Error" ? root.theme.error : root.theme.secondary; elide: Text.ElideRight }
                     }
                     CastText {
-                        text: "⌄"
-                        font.pixelSize: 20
+                        objectName: "castAudioChevron"
+                        Layout.alignment: Qt.AlignVCenter
+                        text: "expand_more"
+                        font: Tokens.font.icon.small
                         color: root.theme.secondary
                         rotation: 180 * root.expansionProgress
                     }
@@ -64,7 +70,8 @@ Rectangle {
                 objectName: "castAudioSettings"
                 text: qsTr("Settings")
                 flat: true
-                font.pixelSize: 11
+                Layout.alignment: Qt.AlignVCenter
+                font: Tokens.font.label.small
                 Accessible.name: qsTr("Cast Audio settings")
                 onClicked: root.controller.openSettings()
             }

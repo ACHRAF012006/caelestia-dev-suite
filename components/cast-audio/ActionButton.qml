@@ -8,8 +8,9 @@ Button {
     property bool primary: false
     property bool active: false
     property string subtitle: ""
-    implicitHeight: 44
-    implicitWidth: Math.max(44, contentItem.implicitWidth + 28)
+    font: Tokens.font.body.small
+    implicitHeight: Math.max(44, root.implicitContentHeight + root.topPadding + root.bottomPadding)
+    implicitWidth: Math.max(44, root.implicitContentWidth + root.leftPadding + root.rightPadding)
     padding: 12
     hoverEnabled: true
     contentItem: Item {
@@ -18,9 +19,11 @@ Button {
         opacity: root.enabled || root.active ? 1 : 0.45
         CastText {
             id: label
+            objectName: "castAudioButtonText"
+            font: root.font
             anchors.left: parent.left
             anchors.right: parent.right
-            y: root.subtitle ? 0 : (parent.height - height) / 2
+            y: root.subtitle ? (parent.height - parent.implicitHeight) / 2 : (parent.height - height) / 2
             text: root.text
             color: root.primary ? root.theme.accentText : root.active ? root.theme.selectedText : root.theme.foreground
             elide: Text.ElideRight
@@ -30,7 +33,7 @@ Button {
             id: subtitleLabel
             anchors.left: parent.left
             anchors.right: parent.right
-            y: label.height + 3
+            y: label.y + label.height + 3
             visible: root.subtitle.length > 0
             text: root.subtitle
             color: root.active ? root.theme.selectedText : root.theme.secondary

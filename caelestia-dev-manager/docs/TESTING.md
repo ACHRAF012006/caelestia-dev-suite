@@ -125,3 +125,14 @@ Verified 2026-10-06 on CachyOS, Plasma 6.7.5, Wayland, Caelestia installed commi
 The first live service check found a WorkingDirectory quoting bug. It was fixed, a regression test using systemd's own verifier was added, and the live check passed after cleanup and rerun. An installed Caelestia plugin runtime was deliberately not exercised. QML static validation does not guarantee compilation for arbitrary user code; runtime errors remain visible through logs. No reboot or manual launcher search was performed.
 
 Manager 0.4.0 / Cast Audio 0.2.0 (2026-10-07): all 186 manager tests passed, including 10 adapter lifecycle/receipt/recovery tests. All 16 component tests passed. Wheel/source distribution builds succeeded. The isolated native panel probe verified inline expansion, receiver selection, Settings action, drawer opening, Nexus visibility and unload; the separate Settings QML and preference bridge loaded under isolated XDG roots. The authorized local upgrade automatically migrated the previous icon, installed the managed row and restarted Caelestia. No physical Google Cast playback was tested.
+
+Cast Audio's `plugins/cast-audio/tests/quick_toggle_probe.py --shell <shell-root>`
+copies the host and uses a private virtual KWin output, temporary XDG roots and a
+fake controller. Header geometry checks cover icon/text/chevron/action alignment,
+long receiver names, 320/480 widths and 140% fonts in collapsed/expanded and
+idle/casting/error states. It verifies loaded SVG artwork and RGB tint with
+separate theme alpha, then source/receiver/settings actions and Nexus unload.
+Use `--screenshot /tmp/cast.png` for synthetic previews. The Settings probe checks
+the shared ActionButton font/size changes; component unittest coverage preserves
+capture/control behavior. These checks neither capture user audio nor reload the
+production shell.

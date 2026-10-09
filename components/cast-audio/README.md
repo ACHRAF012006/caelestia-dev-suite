@@ -1,6 +1,14 @@
-# Cast Audio 0.5.1
+# Cast Audio 0.5.2
 
 Cast desktop audio or **one application's playback stream** to a Google Cast receiver from a separate expandable row below Caelestia KDE Quick Toggles. The compact row offers **Desktop / One app**, an inline source selector and a short speaker list. Source choices expand inside the panel, preserving the KDE drawer's focus. While connected, it shows the source, volume and Disconnect. Delay profiles and other tuning remain in Settings. Expansion remains smoothly animated. The separate Settings app has **Audio, Speakers, Connection and About** tabs. Both surfaces follow the active Caelestia palette and live changes, with KDE/Qt system colors as a fallback. Microphones are excluded; local playback and default audio routing are preserved.
+
+Version 0.5.2 fixes panel alignment: the header measures both text lines, its icon
+and arrow are centered with the labels and Settings action, and long receiver
+names elide inside the available width. Typography follows shell font tokens,
+including configured font scaling. Shared buttons honor their configured font
+and center multiline content. SVG tint uses RGB with separate image opacity so
+translucent theme colours remain visible. Capture, receiver control, preferences
+and the manager-owned host adapter are unchanged.
 
 ## Installation and panel integration
 
@@ -81,7 +89,7 @@ Run `python3 -B tests/theme_probe.py` to verify active scheme loading, contrast,
 
 Run `python3 -B -m unittest discover -s tests -v` from this component. Forty-five tests cover source/private-IP/settings validation, app identity and reused-index protection, failed encoder cleanup, shared cancellation-safe receiver cleanup, separate idle source refresh, latency-profile migration and bounded history, playlist rotation races, bounded encoder diagnostics, saved receivers, busy/replaced-session protection, cancellation, stream/HTTP boundaries, fixed-port collision, private settings IPC, live URL restrictions, tmpfs-only storage, abandoned-session cleanup, discovery cancellation and subsecond normalization. Run `python3 -B tests/settings_probe.py` for native tab navigation, app selection and save. Run `python3 -B tests/application_probe.py` for a real two-app isolation test on an owned silent sink; it creates and removes only that test sink and captures no user audio.
 
-On a compatible Caelestia KDE Wayland desktop, run `python3 -B tests/quick_toggle_probe.py --shell "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/caelestia"`. The isolated native QML probe copies the host, uses temporary XDG paths and a fake controller, and verifies the separate row, expand/collapse, inline receiver selection, Settings action, Utilities opening, Nexus visibility and unload. It does not capture audio or modify the live host. Receiver tests additionally verify live audio bytes, PLAYING, bounded stop and immediate reconnect. PC capture/transport timing is measured separately from acoustic speaker latency. The Settings preview and palette reload checks use isolated user paths and do not alter live preferences.
+On a compatible Caelestia KDE Wayland desktop, run `python3 -B tests/quick_toggle_probe.py --shell "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/caelestia"`. The native QML probe requires KWin and dbus-run-session. It copies the host into temporary XDG paths, runs on a private virtual KWin output at 1.25 scale and uses a fake controller. It verifies icon/text/button centers, header bounds, RGB/alpha SVG tint, long receiver names, 320/480 logical widths, 140% fonts, idle/casting/error states, expand/collapse, inline receiver selection, Settings action, Utilities opening, Nexus visibility and unload. Add `--screenshot /tmp/cast.png` for synthetic collapsed/expanded/narrow/large-font and icon previews. It does not capture audio or modify the live host. Receiver tests additionally verify live audio bytes, PLAYING, bounded stop and immediate reconnect. PC capture/transport timing is measured separately from acoustic speaker latency. The Settings preview and palette reload checks use isolated user paths and do not alter live preferences.
 
 The private settings-only Unix socket is mode 0600 and verifies the current user's peer credentials. Requests cannot start playback. Settings also supports saving preferences when the plugin is stopped. No settings HTTP endpoint or remote account control is exposed.
 
