@@ -74,7 +74,7 @@ StyledRect {
     Connections {
         target: root.controller
         function onCreated(requestId, kind, recordId) {
-            if (requestId === root.requestId) { root.captured(kind, recordId); if (kind === "notes") root.close(); }
+            if (requestId && requestId === root.requestId) { root.requestId = ""; root.captured(kind, recordId); if (kind === "notes") root.close(); }
         }
     }
 }

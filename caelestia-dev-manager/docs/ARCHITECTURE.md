@@ -112,7 +112,7 @@ PluginLoader singleton controller owns one standard-library storage helper;
 per-monitor pages share command/delta models. Personal data is under XDG data
 `caelestia-components/notes-tasks`, outside payload and manager ownership.
 
-Notes & Tasks 0.2.0 changes presentation without changing the v1 schema or Python
+Notes & Tasks 0.2.1 changes presentation without changing the v1 schema or Python
 helper: shared shell primitives form capture, paper-note, task-progress and tag
 widgets. Each monitor keeps a virtualized note grid and task list; search
 reconciles rows in memory. Completion commits immediately and defers only visible

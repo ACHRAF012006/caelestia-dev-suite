@@ -109,7 +109,7 @@ legacy target, and preserves lifecycle backups/recovery/dirty-host protection.
 Only verified Caelestia KDE v2.5.1 is currently supported. Read
 [the integration contract](docs/DASHBOARD_INTEGRATION.md).
 
-[Notes & Tasks 0.2.0](plugins/notes-tasks/README.md) supplies native notes, tasks,
+[Notes & Tasks 0.2.1](plugins/notes-tasks/README.md) supplies native notes, tasks,
 quick capture, search, inline editors, archives, subtasks and local autosave. Its
 shared helper and personal-data directory survive updates and uninstall. Update
 Dev Manager to 0.7.0 before reviewing Store installation. Publication does not

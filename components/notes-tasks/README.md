@@ -1,4 +1,4 @@
-# Notes & Tasks 0.2.0
+# Notes & Tasks 0.2.1
 
 A native Caelestia KDE dashboard page, requiring Dev Manager 0.7.0+ and verified
 Caelestia KDE v2.5.1 (`e34b6957fad5ce9395841b65be9e3df180ccd65c`). Install from the
@@ -86,5 +86,5 @@ Note content has a format envelope; records retain extension maps. Tasks reserve
 recurrence and project IDs. These allow later Markdown, folders, projects,
 attachments, calendars, encryption and synchronization to be designed without
 coupling the UI to raw storage. The storage schema and Python helper are unchanged from 0.1.0; this release needs
-no data migration. Version 0.2.0 does not implement those future features,
+no data migration. Version 0.2.1 does not implement those future features,
 cloud sync, notifications or reminders.

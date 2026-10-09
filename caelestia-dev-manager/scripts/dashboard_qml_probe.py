@@ -187,6 +187,7 @@ ShellRoot {
                 } else if (stage === 3) {
                     const list = root.child(notesPage, "notesTasksNotesList");
                     root.check(list.count === 1, "notes visible on every monitor");
+                    root.check(!root.child(notesPage, "notesTasksNotesPane").selectedId, "external creation does not steal editor focus");
                     root.check(root.child(notesPage, "notesTasksTasksList").count === 2, "tasks visible on every monitor");
                     root.child(notesPage, "notesTasksSearch").text = "sharedtag";
                 } else if (stage === 4) {
@@ -288,11 +289,14 @@ ShellRoot {
                 } else if (stage === 24 && modelData === Quickshell.screens[0]) {
                     root.check(!root.controller.notes[root.noteId] && !root.child(notesPage, "notesTasksNotesPane").selectedId, "delete removes note and closes editor");
                     root.check(!root.controller.tasks[root.taskId].completed, "uncomplete retained task");
+                    const pinned = Object.values(root.controller.notes).find(n => n.title === "A calmer workspace");
+                    root.controller.send({action: "duplicate", kind: "notes", id: pinned.id});
                     GlobalConfig.appearance.font.scale = 1.3;
                     notesPage.width = 380; notesPage.height = 600;
                     root.child(notesPage, "notesTasksSearch").text = "linux";
                 } else if (stage === 25 && modelData === Quickshell.screens[0]) {
                     tilesMatch();
+                    root.check(!root.child(notesPage, "notesTasksNotesPane").selectedId && !root.child(canvas.page, "notesTasksNotesPane").selectedId, "duplicate reply does not open unrelated page editors");
                     const search = root.child(notesPage, "notesTasksSearch");
                     root.check(root.child(notesPage, "notesTasksNotesList").count === 1, "debounced search with font scaling");
                     root.check(search.mapToItem(notesPage, search.width, 0).x <= notesPage.width, "expanded search fits narrow page");
@@ -311,7 +315,9 @@ ShellRoot {
                     root.check(root.child(notesPage, "notesTasksQuickCapture").kind === "notes" && root.child(notesPage, "notesTasksCapture").activeFocus, "Ctrl+N focuses note capture");
                     typeIn(root.child(notesPage, "notesTasksCapture"), "Keyboard captured note"); inputTest.keyClick(Qt.Key_Return, Qt.ControlModifier);
                 } else if (stage === 27 && modelData === Quickshell.screens[0]) {
-                    root.check(Object.values(root.controller.notes).some(n => n.text === "Keyboard captured note"), "Ctrl+Enter captures note body");
+                    const note = Object.values(root.controller.notes).find(n => n.text === "Keyboard captured note");
+                    root.check(!!note && root.child(notesPage, "notesTasksNotesPane").selectedId === note.id, "Ctrl+Enter captures and opens the requesting editor");
+                    root.check(!root.child(root.windows[1].notesPage, "notesTasksNotesPane").selectedId && !root.child(canvas.page, "notesTasksNotesPane").selectedId, "capture reply remains local to the requesting page");
                     root.controller.send({action: "flush"});
                 }
             }
