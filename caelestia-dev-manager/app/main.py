@@ -7,7 +7,7 @@ import shlex
 import sys
 import time
 
-from PySide6.QtCore import Qt, QTimer, QUrl, Slot
+from PySide6.QtCore import Qt, QTimer, QUrl, Slot, QSize
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
@@ -18,6 +18,7 @@ from app.store import StorePage
 from app.review import ReviewDialog
 from app.navigation import AnimatedStack, AnimatedNavigation
 from app.branding import application_icon
+from app.component_icons import ComponentIcons
 from app.inspection import Inspection
 from app import preferences
 from backend.paths import VERSION, Paths, SafetyError, no_symlinks, relative
@@ -100,6 +101,7 @@ class Window(QMainWindow):
         self.nav.set_animations_enabled(self.stack.animations_enabled)
         main.addWidget(self.nav); main.addWidget(self.stack, 1)
         self.setCentralWidget(container)
+        self.component_icons = ComponentIcons()
         self.make_dashboard(); self.make_components(); self.make_import(); self.make_context()
         self.make_backups(); self.make_logs(); self.make_settings()
         self.store_page = StorePage(self); self.stack.addWidget(self.store_page)
@@ -167,9 +169,13 @@ class Window(QMainWindow):
         p, layout = page("Components", "Development source and installed copies are tracked separately. Select a component to manage it.")
         layout.addLayout(row(button("+ New Component", self.new_component, True), button("Import Folder", self.import_folder),
                              button("Refresh", lambda: self.guard(self.request_refresh))))
-        split = QSplitter(); self.components = QListWidget(); self.components.setMinimumWidth(260)
+        split = QSplitter(); self.components = QListWidget(); self.components.setMinimumWidth(260); self.components.setIconSize(QSize(44, 44))
         self.components.currentItemChanged.connect(self.select_component); split.addWidget(self.components)
         details = QWidget(); dl = QVBoxLayout(details); dl.setContentsMargins(12, 0, 0, 0)
+        identity = QHBoxLayout()
+        self.component_icon = QLabel(); self.component_icon.setFixedSize(56, 56)
+        self.component_name = QLabel("Select a component"); self.component_name.setStyleSheet("font-size: 21px; font-weight: 600;")
+        identity.addWidget(self.component_icon); identity.addWidget(self.component_name, 1); dl.addLayout(identity)
         self.shortcut_state = QLabel("Desktop Shortcut: Not Created"); dl.addWidget(self.shortcut_state)
         self.dependency_state = QLabel("Dependencies: Select a component"); self.dependency_state.setWordWrap(True); dl.addWidget(self.dependency_state)
         self.component_info = CodeEditor(readonly=True); dl.addWidget(self.component_info)
@@ -322,7 +328,7 @@ class Window(QMainWindow):
 
     def make_context(self):
         p, layout = page("Codex Context", "Generate a prompt with your environment, dependency diagnostics, component contract, and GitHub store publishing steps.")
-        self.request = QTextEdit(); self.request.setPlaceholderText("Describe what to build or fix, and whether to publish it to the GitHub Component Store."); self.request.setMaximumHeight(150); layout.addWidget(self.request)
+        self.request = QTextEdit(); self.request.setPlaceholderText("Describe what to build or fix. Completed work must be committed and pushed to Git; include any repository or branch constraints."); self.request.setMaximumHeight(150); layout.addWidget(self.request)
         layout.addLayout(row(button("Generate Prompt", self.generate_context), button("Copy Full Codex Prompt", self.copy_context, True)))
         self.context_editor = CodeEditor(readonly=True); layout.addWidget(self.context_editor); self.stack.addWidget(p)
 
@@ -467,7 +473,7 @@ class Window(QMainWindow):
         selected = self.current_id
         self.components.blockSignals(True); self.components.clear()
         for r in self.statuses:
-            item = QListWidgetItem(f"{r['manifest']['name']}\n{r['manifest']['type']}\n{r['status']}"); item.setData(Qt.UserRole, r["id"]); self.components.addItem(item)
+            item = QListWidgetItem(f"{r['manifest']['name']}\n{r['manifest']['type']}\n{r['status']}"); item.setData(Qt.UserRole, r["id"]); item.setIcon(self.component_icons.icon(r["manifest"], r.get("icon_svg", ""), ratio=self.devicePixelRatioF())); self.components.addItem(item)
         self.components.blockSignals(False)
         if selected: self.select_id(selected)
         elif self.components.count(): self.components.setCurrentRow(0)
@@ -495,6 +501,7 @@ class Window(QMainWindow):
         from backend.installers import installer
         self.current_id = item.data(Qt.UserRole) if item else None
         if not self.current_id:
+            self.component_icon.clear(); self.component_name.setText("Select a component")
             self.shortcut_state.setText("Desktop Shortcut: Not Created")
             self.dependency_state.setText("Dependencies: Select a component")
             self.component_info.setPlainText("Select a component")
@@ -502,6 +509,8 @@ class Window(QMainWindow):
             return
         r = next((r for r in self.statuses if r["id"] == self.current_id), None)
         if not r: return
+        self.component_icon.setPixmap(self.component_icons.pixmap(r["manifest"], r.get("icon_svg", ""), 56, self.devicePixelRatioF()))
+        self.component_name.setText(r["manifest"]["name"])
         self.shortcut_state.setText("Desktop Shortcut: " + r["desktop_shortcut_state"])
         dependencies = self.dependency_reports.get(self.current_id)
         if dependencies is None: return
@@ -595,7 +604,7 @@ class Window(QMainWindow):
                     "\n\nExisting versions are backed up so you can go back. The app runs independently of Dev Manager.\nRestart an open app to use its updated version.")
                 if plan["warnings"]: options.summary_text += "\n\nPlease note\n" + "\n".join(plan["warnings"])
                 if plan.get("host_integration"):
-                    options.summary_text += "\n\nQuick Toggles integration\n" + plan["host_integration"]["summary"] + "\nTwo verified host files are backed up and tracked separately; technical details show the complete before/after source."
+                    options.summary_text += "\n\nCaelestia host integration\n" + plan["host_integration"]["summary"] + "\nTwo verified host files are backed up and tracked separately; technical details show the complete before/after source."
                 text += "\n\nCOMPLETE COMPONENT SOURCE\n" + encode(self.manager.read_source(self.current_id), m)
             except SafetyError as e:
                 options.plan = None; text = str(e); alternative.setVisible(isinstance(e, ShortcutConflict))
@@ -655,8 +664,10 @@ class Window(QMainWindow):
     def uninstall_selected(self):
         files = self.manager.plan_uninstall(self.current_id)
         text = "Remove only these owned installed files:\n\n" + "\n".join(f["path"] for f in files) + "\n\nDevelopment source will remain. Running managed processes/services will be stopped."
-        if self.manager.installed(self.current_id).get("installed_manifest", {}).get("integration", {}).get("target") == "caelestia-quick-toggles":
-            text += "\n\nThe Cast menu bridge will be removed, its two original host files restored, and Caelestia KDE restarted. Host files changed since integration are preserved and block this operation."
+        host = host_integration.plan(self.manager.paths, {"id": self.current_id})
+        if host:
+            text += "\n\n" + host["summary"] + " Caelestia KDE will restart. Changed host files are preserved and block this operation."
+            text += "\n\n" + "\n".join("HOST FILE " + str(self.manager.paths.shell / name) + "\nBEFORE\n" + host["before"][name] + "\nAFTER\n" + host["after"][name] for name in host["before"])
         if self.confirm("Uninstall component", text, "Uninstall"):
             self.manager.uninstall(self.current_id); self.refresh(); self.notify("Uninstalled owned files; source preserved")
 

@@ -728,6 +728,8 @@ class Manager:
             files = self.read_source(record["id"])
             current = manifest_parse(files["manifest.json"])
             result["manifest"] = current
+            icon = files.get(current.get("desktop", {}).get("icon") or "assets/icon.svg", "")
+            result["icon_svg"] = icon if len(icon.encode()) <= 65536 else ""
             result["source_hash"] = self.source_hash(files)
             result["source_modified"] = bool(record.get("installed") and result["source_hash"] != record.get("installed_source_hash"))
             result["validation"] = validate(files, current, self.environment)
@@ -754,13 +756,13 @@ class Manager:
         else: result["running"] = False
         if record.get("installed") and host_integration.requested(installed_manifest):
             try:
-                if not host_integration.receipt_path(self.paths).is_file():
-                    raise SafetyError("Quick Toggles integration receipt is missing")
+                if not host_integration.receipt_path(self.paths, record["id"]).is_file():
+                    raise SafetyError("Host integration receipt is missing")
                 host_integration.plan(self.paths, installed_manifest)
-                result["host_integration_status"] = "Quick Toggles menu installed"
+                result["host_integration_status"] = "Timer dashboard installed" if record["id"] == "animated-timer" else "Quick Toggles menu installed"
             except (OSError, ValueError) as error:
                 result["host_integration_status"] = str(error)
-                result["modified"].append("Quick Toggles integration: " + str(error))
+                result["modified"].append("Host integration: " + str(error))
         if result["missing"]: result["status"] = "Missing Files"
         elif result["modified"]: result["status"] = "Broken"
         elif result.get("service_state") == "failed" or result.get("service_load_state") in {"bad-setting", "error", "not-found"}: result["status"] = "Broken"

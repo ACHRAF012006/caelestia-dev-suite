@@ -57,7 +57,7 @@ Uninstalled components blocked only by missing executables show **Missing Depend
 
 Preparation failures show the component, the requirement reported by pip (including transitive packages), the Python version and captured output. Network/index failures are distinguished from unavailable binary wheels and dependency conflicts. A redacted diagnostic is retained for that component's current dependency set and in Logs; authenticated URLs are removed. Failed preparation never marks the environment ready or proceeds with installation. Only binary wheels are accepted; no source builds or global package installation are enabled.
 
-**Codex Context** assembles the environment, inventory, dependency diagnostics, architecture, component spec, package format and current request into one clipboard prompt. It includes the GitHub store target, publishing layout and verification steps. State whether your request includes publishing: local `plugins/<id>/` projects appear in the store only after their complete source reaches the suite's `components/<id>/` on `main`. Components are never added as runtime pages inside this manager.
+**Codex Context** assembles the environment, inventory, dependency diagnostics, architecture, component spec, package format and current request into one clipboard prompt. It includes the GitHub store target, publishing layout and verification steps. Completed code tasks require scoped Git commits and pushes unless your request explicitly opts out: local `plugins/<id>/` projects appear in the store only after their complete source reaches the suite's `components/<id>/` on `main`. Components are never added as runtime pages inside this manager.
 
 Standalone apps and scripts offer **Create shortcut on desktop** in New Component, Create / Import and the installation preview. It defaults to off; packages can opt in with `"desktop": {"createShortcut": true}`. Installed component actions can create/remove the shortcut separately. Shortcuts copy the normal application launcher into your configured XDG desktop directory, including localized paths. Existing unrelated files are preserved; the UI offers an alternate filename. Owned shortcuts are backed up and removed with component uninstall. See [desktop shortcuts](docs/DESKTOP_SHORTCUTS.md).
 
@@ -67,7 +67,7 @@ The inspected upstream and installed shell use `metadata.json` discovery at `$XD
 
 Cast Audio 0.5.0 uses the manager 0.5.1 [verified Quick Toggles adapter](docs/QUICK_TOGGLES_INTEGRATION.md): a redesigned expandable receiver row with desktop/app selection, Fast/Balanced live profiles, tabbed Settings, saved device IPs and an optional fixed audio stream port. Reviewed installation adds the row, enables new installs and restarts Caelestia. Updates preserve disabled state. Removal restores the original host files; later host edits block replacement. Install prepares component-owned catt libraries, known missing audio packages and active-UFW rules for the saved port with native authentication where required. No PC IP is hardcoded. Google account discovery is unavailable in this Linux backend.
 
-Dashboard tabs in the inspected source are a fixed list. Dashboard injection and general KDE/KWin extensions are not supported by this release. A future adapter needs a verified runtime contract.
+Caelestia Animated Timer 0.1.2 uses the separate [Timer adapter](docs/ANIMATED_TIMER_INTEGRATION.md) in manager 0.6.0. It adds a native dashboard Timer tab and per-monitor slim notch using two checksum-pinned host files for Caelestia KDE v2.5.1. Install reviews exact host source, preserves originals and supports recovery/uninstall. Generic dashboard injection and KDE/KWin extensions remain unsupported.
 
 ## Development and tests
 
@@ -91,4 +91,12 @@ The automated suite uses temporary paths. The separate desktop acceptance helper
 
 Version 0.5 handles UTF-8 text packages, including SVG assets. Raster/binary package assets, archive import, compiled application build pipelines, KWin/Plasma package adapters and arbitrary QML module destinations are not implemented. Python/QML/shell applications, commands, Python/shell services and verified Caelestia Quickshell plugins are supported. Static validation checks Python syntax and metadata; it cannot prove code safety or guarantee QML imports compile. Python dependency preparation runs as a separately reviewed synchronous operation and can temporarily block the UI. App PID detection is best effort through `/proc`; applications that replace themselves or fork away from installed paths may not be detected.
 
-Start future work with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md). No real Notes app or user extension is included.
+Start future work with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md). No Notes app is included. Animated Timer source is bundled for the dedicated adapter tests; published components remain independent runtimes.
+
+Manager 0.6.1 gives each component a consistent icon in Components and the Store,
+including bundled artwork for Cast Audio, TouchDeck and Animated Timer. Declared
+static SVGs take precedence; other apps use an ID-based monogram. Codex Context
+now leads with the task, documents both verified host adapters, and requires scoped
+Git commits/pushes with remote verification unless the request explicitly opts out.
+Push failures must be reported; production installation still uses its reviewed
+lifecycle.

@@ -19,7 +19,7 @@ Every component has `manifest.json` at source root. JSON duplicate/unknown keys 
 }
 ```
 
-The optional icon must actually exist. Omit it to use the desktop development icon.
+The optional icon must actually exist. Declare a distinct static `desktop.icon` SVG for each component, including shell plugins; it identifies the component without creating a shortcut. Components and Store show the same artwork. Without valid artwork, known apps use bundled identity icons and other components use a stable ID-based monogram. Canonical desktop launchers retain their existing fallback when no icon is declared.
 
 | Field | Meaning |
 | --- | --- |
@@ -38,7 +38,7 @@ The optional icon must actually exist. Omit it to use the desktop development ic
 | service.restart | no, on-failure, always; defaults to no |
 | compatibility.plasma | Optional installed Plasma version prefix |
 | compatibility.caelestia_commit | Optional exact installed commit |
-| integration.target | qml-component requires caelestia-plugin; Cast Audio quickshell plugins may declare caelestia-quick-toggles for the manager-owned adapter |
+| integration.target | qml-component requires caelestia-plugin; Cast Audio quickshell plugins may declare caelestia-quick-toggles; animated-timer alone may declare caelestia-dashboard-timer in manager 0.6.0 |
 | permissions | Descriptive string list shown during review; this is disclosure, not a security sandbox |
 
 Python/PySide6, standalone QML (`qml6`) and shell runtimes work for apps/commands/services. Caelestia integration requires quickshell. `python-pyside6` must declare a PySide6 Python dependency. `none` creates drafts. General KDE integration is reserved and cannot install in v0.1. Python dependencies support Python runtimes and Quickshell Python sidecars. Sidecars must explicitly use installed `_venv/bin/python`; launch module entrypoints instead of relocated console scripts.
@@ -72,3 +72,5 @@ ID, name, description and version must match the manager manifest. `ui` must mat
 Source supports UTF-8 text files and SVG; package import rejects traversal, absolute paths, hidden/cache paths, duplicates, file/directory conflicts and symlinks. `_venv` is manager-reserved. All source files are copied as inert text data; only generated launchers or service entries invoke the declared entrypoint. Executable bits on source scripts are unnecessary: the launcher calls the interpreter explicitly. Install scripts are never auto-executed. Destination overrides and arbitrary service/desktop Exec fields are not supported.
 
 The Cast Audio-only `caelestia-quick-toggles` adapter requires manager 0.4 or newer. Its reviewed install adds a separate expandable row, enables new installs and restarts the shell. See [Quick Toggles integration](QUICK_TOGGLES_INTEGRATION.md). Other plugins keep the explicit enable/reload workflow.
+
+Animated Timer requires the dedicated [Timer adapter](ANIMATED_TIMER_INTEGRATION.md) in manager 0.6.0; the store does not upgrade managers. Unknown integration targets are rejected.

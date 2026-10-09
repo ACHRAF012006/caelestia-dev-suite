@@ -6,7 +6,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-VERSION = "0.5.1"
+VERSION = "0.6.1"
 
 class SafetyError(ValueError):
     pass

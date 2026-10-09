@@ -60,6 +60,11 @@ def manifest_parse(text):
     if any(not isinstance(v, str) for v in m.get("compatibility", {}).values()): raise SafetyError("Compatibility values must be strings")
     if m.get("integration", {}).get("target") == "caelestia-quick-toggles" and (m["id"] != "cast-audio" or m["type"] != "caelestia-plugin" or m["runtime"] != "quickshell"):
         raise SafetyError("The verified Quick Toggles menu adapter currently supports the Cast Audio Quickshell plugin only")
+    target = m.get("integration", {}).get("target")
+    if target == "caelestia-dashboard-timer" and (m["id"] != "animated-timer" or m["type"] != "caelestia-plugin" or m["runtime"] != "quickshell"):
+        raise SafetyError("The Timer dashboard adapter supports animated-timer Quickshell only")
+    if target not in (None, "caelestia-plugin", "caelestia-quick-toggles", "caelestia-dashboard-timer"):
+        raise SafetyError("Unsupported integration target")
     return m
 
 def validate(files, manifest, environment=None):
@@ -92,6 +97,8 @@ def validate(files, manifest, environment=None):
                 if meta.get(key) != manifest.get(key, ""): errors.append(f"metadata.json {key} must match manifest")
         except (ValueError, AttributeError): errors.append("Invalid Caelestia metadata.json")
         if environment and not environment.get("plugin_supported"): errors.append("Installed Caelestia plugin architecture could not be verified")
+        if manifest.get("integration", {}).get("target") == "caelestia-dashboard-timer":
+            warnings.append("Installation enables Animated Timer, adds its reviewed dashboard bridge and restarts the Caelestia KDE shell. Requires the Timer-capable manager release.")
         warnings.append("Installation enables Cast Audio, integrates its menu into Quick Toggles and restarts the Caelestia KDE shell after review." if manifest.get("integration", {}).get("target") == "caelestia-quick-toggles" else "Plugin installation/activation requires an explicit Caelestia shell restart. No dashboard registration API is assumed.")
     elif manifest["runtime"] not in {"python", "python-pyside6", "shell", "qml"}:
         errors.append("This component type needs a Python, shell, or standalone QML runtime")

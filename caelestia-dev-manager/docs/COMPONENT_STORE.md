@@ -19,7 +19,10 @@ there are no repository or branch fields. Legacy custom repository settings are
 ignored by the UI. Startup checks are on by default, asynchronous and cancellable.
 Settings disables them; Refresh requests a manual check.
 
-App cards show an icon, description and installation status. Search filters by
+App cards show an icon, description and installation status. The same static SVG
+identity appears in Components and Store details. Declared desktop.icon artwork
+takes precedence; known apps have bundled icons and other apps use a stable
+ID-based monogram. Rendering rejects active SVG and external references. Search filters by
 name, ID, description and type; All apps, Installed and Updates filter the list.
 One main button changes from Install to Update when the published fingerprint
 differs, or Open when an installed app can launch. Non-launchable/disabled

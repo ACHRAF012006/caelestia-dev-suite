@@ -4,8 +4,8 @@ Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE P
 
 ## Repository layout
 
-- **`caelestia-dev-manager/`** — Dev Manager 0.5.1, installer, documentation and tests.
-- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1 and Cast Audio 0.5.1 are included.
+- **`caelestia-dev-manager/`** — Dev Manager 0.6.1, installer, documentation and tests.
+- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1, Cast Audio 0.5.1 and Animated Timer 0.1.2 are included.
 
 The manager handles installation and lifecycle. Components continue running after it closes.
 
@@ -44,12 +44,16 @@ Dev Manager's **Component Store** checks this repository automatically when it o
 
 Launch installed TouchDeck from KDE or with `touchdeck`; it does not need Dev Manager running.
 
-For [Cast Audio](components/cast-audio/README.md), update Dev Manager to **0.5.1**, then choose Component Store → Refresh → Cast Audio → Install/Update. Reviewed installation automatically adds a **separate expandable row beneath Quick Toggles**, enables new installations and restarts Caelestia KDE. Updates preserve disabled state. Expand the row and choose a receiver inline; its **Settings** button opens a separate app with desktop/app selection and live delay/bitrate preferences, saved device IPs and an optional fixed stream port for routed VLANs. Google-account discovery is unavailable in this Linux backend. Installation prepares private catt dependencies, known missing audio tools and portable active-UFW rules for the saved fixed port using native authentication where required. The README includes router requirements and current playback-test limitations. Uninstall restores the managed host originals; later host edits are preserved and block replacement.
+For [Cast Audio](components/cast-audio/README.md), update Dev Manager to **0.6.1**, then choose Component Store → Refresh → Cast Audio → Install/Update. Reviewed installation automatically adds a **separate expandable row beneath Quick Toggles**, enables new installations and restarts Caelestia KDE. Updates preserve disabled state. Expand the row and choose a receiver inline; its **Settings** button opens a separate app with desktop/app selection and live delay/bitrate preferences, saved device IPs and an optional fixed stream port for routed VLANs. Google-account discovery is unavailable in this Linux backend. Installation prepares private catt dependencies, known missing audio tools and portable active-UFW rules for the saved fixed port using native authentication where required. The README includes router requirements and current playback-test limitations. Uninstall restores the managed host originals; later host edits are preserved and block replacement.
+
+For [Animated Timer](components/animated-timer/README.md), update Dev Manager to **0.6.1**, then Refresh the Store and review Install. It adds a native Timer dashboard tab and a screen-safe top notch with animated play/pause controls. Completion rings until Stop in its notification or Timer tab. The dedicated adapter supports only Caelestia KDE v2.5.1 at its pinned commit and preserves/restores the original host files.
+
+Components and Store now share distinct app icons. **Codex Context** includes both adapter contracts and requires scoped Git commits/pushes with remote verification for completed code tasks unless the request explicitly opts out.
 
 ## Development
 
-Edit manager code in `caelestia-dev-manager/`. Publish components in `components/<id>/` with semantic versions and strict manifests. Commit and push to `main`; the next store check discovers changes. Local downloaded/draft source under the manager's `plugins/` is ignored and never published automatically.
+Edit manager code in `caelestia-dev-manager/`. Publish components in `components/<id>/` with semantic versions and strict manifests. Commit and push to `main`; the next store check discovers changes. Local downloaded/draft source under the manager's `plugins/` is ignored and never published automatically. The bundled Animated Timer source is retained for adapter tests and source distributions; its Store entry lives under `components/animated-timer/`.
 
-[Manager documentation](caelestia-dev-manager/README.md) · [Component contract](caelestia-dev-manager/docs/COMPONENT_SPEC.md) · [Component Store](caelestia-dev-manager/docs/COMPONENT_STORE.md) · [TouchDeck](components/touchdeck/README.md) · [Cast Audio](components/cast-audio/README.md)
+[Manager documentation](caelestia-dev-manager/README.md) · [Component contract](caelestia-dev-manager/docs/COMPONENT_SPEC.md) · [Component Store](caelestia-dev-manager/docs/COMPONENT_STORE.md) · [TouchDeck](components/touchdeck/README.md) · [Cast Audio](components/cast-audio/README.md) · [Animated Timer](components/animated-timer/README.md)
 
 [Scoped shell repairs](shell-fixes/README.md) include the preview/icon recovery fix for the verified Caelestia KDE host.

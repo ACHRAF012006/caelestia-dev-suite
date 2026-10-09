@@ -1,13 +1,10 @@
 """A simple app store with integrated installs and saved-version recovery."""
 import json
-import re
-from xml.etree import ElementTree
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, Slot, QSize, QByteArray
-from PySide6.QtGui import QIcon, QPixmap, QPainter
-from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, Slot, QSize
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-                              QListWidget, QListWidgetItem, QSplitter, QComboBox, QFrame, QStyle)
+                              QListWidget, QListWidgetItem, QSplitter, QComboBox, QFrame)
+from app.component_icons import ComponentIcons
 from backend.codex.package import encode
 from backend.paths import SafetyError
 from backend.store import Store, DEFAULT_REPOSITORY
@@ -38,7 +35,7 @@ class StorePage(QWidget):
                                "check_on_startup": self.store.settings["check_on_startup"]}
         self.catalog, self.worker = self.store.cached(), None
         self.closing, self.busy = False, False
-        self.icons = {}
+        self.component_icons = ComponentIcons()
         self.last_error = ""
         self.setStyleSheet("""
             QFrame#storeDetail { background: #202631; border: 1px solid #303a48; border-radius: 16px; }
@@ -115,26 +112,10 @@ class StorePage(QWidget):
         if update: return {"label": "Update available", "action": "Update", "enabled": True, "installed": True, "update": True, "protected": False}
         return {"label": "Installed" if record.get("enabled") else "Installed · Disabled", "action": "Open" if launchable else "Installed", "enabled": bool(launchable), "installed": True, "update": False, "protected": False}
 
-    def app_image(self, entry):
-        key = entry["hash"]
-        if key in self.icons: return self.icons[key]
-        image = QIcon.fromTheme("application-x-executable", self.style().standardIcon(QStyle.SP_FileIcon)).pixmap(80, 80)
-        text = entry["files"].get(entry["manifest"].get("desktop", {}).get("icon", ""), "")
-        if text and len(text.encode()) <= 65536 and not re.search(r"<!DOCTYPE|<!ENTITY|<script|<foreignObject", text, re.I):
-            try:
-                root = ElementTree.fromstring(text)
-                external = any(k.split("}")[-1] == "href" and not v.startswith("#") for node in root.iter() for k, v in node.attrib.items())
-                external = external or any(not x.strip(" \"'").startswith("#") for x in re.findall(r"url\(([^)]+)\)", text, re.I))
-                if not external:
-                    renderer = QSvgRenderer(QByteArray(text.encode()))
-                    if renderer.isValid() and not renderer.animated():
-                        image = QPixmap(80, 80); image.fill(Qt.transparent)
-                        painter = QPainter(image); renderer.render(painter); painter.end()
-            except ElementTree.ParseError:
-                pass
-        if len(self.icons) >= 128: self.icons.clear()
-        self.icons[key] = image
-        return image
+    def app_image(self, entry, size=80):
+        manifest = entry["manifest"]
+        svg = entry["files"].get(manifest.get("desktop", {}).get("icon") or "assets/icon.svg", "")
+        return self.component_icons.pixmap(manifest, svg, size, self.devicePixelRatioF())
 
     def set_startup_check(self, checked):
         self.store.save_settings(DEFAULT_REPOSITORY, "main", checked)
@@ -185,7 +166,7 @@ class StorePage(QWidget):
             item.setData(Qt.AccessibleTextRole, m["name"] + ". " + state["label"]); self.list.addItem(item)
             card = QWidget(); card.setObjectName("storeListCard"); card.setAttribute(Qt.WA_TransparentForMouseEvents)
             row = QHBoxLayout(card); row.setContentsMargins(12, 14, 12, 14)
-            image = QLabel(); image.setFixedSize(56, 56); image.setPixmap(self.app_image(entry).scaled(56, 56, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            image = QLabel(); image.setFixedSize(56, 56); image.setPixmap(self.app_image(entry, 56))
             row.addWidget(image)
             labels = QVBoxLayout(); labels.setSpacing(6)
             labels.addWidget(self.label(m["name"], "storeCardName"))

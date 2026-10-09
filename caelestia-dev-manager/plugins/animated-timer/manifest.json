@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "animated-timer",
+  "name": "Caelestia Animated Timer",
+  "version": "0.1.2",
+  "description": "Native dashboard timer with a slim monitor notch and animated sand hourglass.",
+  "type": "caelestia-plugin",
+  "runtime": "quickshell",
+  "entrypoint": "main.qml",
+  "dependencies": {
+    "system": [
+      "quickshell",
+      "python3",
+      "notify-send",
+      "canberra-gtk-play",
+      "gdbus"
+    ],
+    "python": []
+  },
+  "compatibility": {
+    "caelestia_commit": "e34b6957fad5ce9395841b65be9e3df180ccd65c"
+  },
+  "integration": {
+    "target": "caelestia-dashboard-timer"
+  },
+  "permissions": [
+    "Run one standard-library Python timer helper independently of Dev Manager.",
+    "Persist durations, custom presets, preferences, active countdown and pending alarm in XDG_STATE_HOME/animated-timer.",
+    "Repeat an original completion bell until stopped; show an actionable persistent desktop notification, and close only the timer notification on Stop. Run notify-send, canberra-gtk-play and gdbus for these controls.",
+    "Display a non-focusable per-monitor Wayland timer notch and open the host dashboard Timer tab on click.",
+    "Dev Manager's dedicated Timer adapter reviews two checksum-pinned dashboard host files, enables this plugin and reloads the shell after a reviewed lifecycle action. Requires Timer-capable Dev Manager 0.6.0."
+  ]
+}

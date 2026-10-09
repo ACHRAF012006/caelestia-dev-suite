@@ -41,3 +41,7 @@ Sources:
 - [KDE application catalogue API](https://api.kde.org/kapplicationtrader.html)
 
 Reinspect and revise this document when upstream changes. Detection is read-only; it does not guarantee every future loader version remains compatible.
+
+## Animated Timer inspection (2026-10-09)
+
+Installed v2.5.1 dashboard Content.qml and Wrapper.qml matched the pinned reference byte-for-byte. Tabs remain a fixed filtered list; Wrapper lazily unloads content when closed and falls back to width 854. Drawers/Panels.qml owns per-monitor screen, top offset and visibility; ScreenState stores per-monitor selected tab. Theme uses Colours.palette, Tokens.font and rounding. The dedicated manager 0.6.0 Timer adapter adds a conditional plugin Component tab, retains last animated width before unload and supplies a separate non-focusable PanelWindow per wrapper. No upstream registration API was found. See [reviewed Timer integration](ANIMATED_TIMER_INTEGRATION.md).

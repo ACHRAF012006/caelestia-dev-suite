@@ -1,0 +1,9 @@
+{
+  "id": "animated-timer",
+  "name": "Caelestia Animated Timer",
+  "version": "0.1.2",
+  "description": "Native dashboard timer with a slim monitor notch and animated sand hourglass.",
+  "type": "quickshell",
+  "ui": "main.qml",
+  "restart": true
+}

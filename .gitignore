@@ -16,3 +16,6 @@ caelestia-dev-manager/reference/caelestia-kde/
 caelestia-dev-manager/plugins/*
 !caelestia-dev-manager/plugins/_template/
 !.gitkeep
+
+# Bundled Timer source supports manager adapter tests and source distributions.
+!caelestia-dev-manager/plugins/animated-timer/

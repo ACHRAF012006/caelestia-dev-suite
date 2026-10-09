@@ -30,7 +30,10 @@ def window(manager, app_files):
 
 def wait_until(predicate):
     deadline = time.monotonic() + 4
-    while not predicate() and time.monotonic() < deadline: QTest.qWait(10)
+    while not predicate() and time.monotonic() < deadline:
+        QTest.qWait(10)
+        # Yield the GIL as well as pumping Qt so Python inspection workers run.
+        time.sleep(0.001)
     assert predicate()
 
 

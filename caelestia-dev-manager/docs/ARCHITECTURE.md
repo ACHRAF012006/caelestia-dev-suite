@@ -61,7 +61,7 @@ The installed loader contract is inspected before planning plugin installs. A ne
 
 ## Extending the platform
 
-Add manifest fields with strict validation, a target-specific adapter, supported capabilities and isolated safety tests. Document the verified host discovery/activation contract before supporting a new runtime. General KWin or Plasma widgets should use official KDE mechanisms in their own adapter. Dashboard tabs require an upstream hook or reviewed host changes; this platform currently does neither.
+Add manifest fields with strict validation, a target-specific adapter, supported capabilities and isolated safety tests. Document the verified host discovery/activation contract before supporting a new runtime. General KWin or Plasma widgets should use official KDE mechanisms in their own adapter. Dashboard tabs require an upstream hook or reviewed host changes; manager 0.6.0 implements only the fixed Timer-specific adapter.
 
 ## Manager-owned Quick Toggles integration (0.4)
 
@@ -72,3 +72,22 @@ Add manifest fields with strict validation, a target-specific adapter, supported
 `backend/system_setup.py` owns fixed audio-package and active-UFW recipes. Component source cannot specify privileged commands. UI reviews preparation before Python dependencies and payload planning; Manager rechecks the current recipe before native pkexec authentication. Only ffmpeg/pactl/parec mappings are automatic on supported distributions; host prerequisites remain explicit. UFW rules use private source ranges, the saved fixed port and any local destination. No computer address is persisted in the recipe. Preparation is external machine state, separate from recoverable user-file transactions, and may remain after cancellation/uninstall. Inactive firewalls are preserved.
 
 Quickshell sidecars may declare Python dependencies. Prepared environments are sealed and copied into the normal component-owned `_venv`, with metadata inspection and lifecycle ownership unchanged. The component must launch its installed interpreter and use modules for console tools because copied console scripts can retain staging shebangs. Cast Audio supplies a bounded launcher for its two sidecars.
+
+## Manager-owned Timer dashboard integration (0.6.0)
+
+`backend/timer_integration.py` pins two dashboard files and release markers, supplying only the Animated Timer bridge. `host_integration.py` dispatches each component to its independent adapter; Timer never uses Cast transformations or receipts. Exact review, sealed plans, journal recovery and lifecycle reloads use the existing coordinator. See [Timer integration](ANIMATED_TIMER_INTEGRATION.md).
+
+## Component identity and generated tasks (0.6.1)
+
+Status inspection includes bounded static icon text from the declared desktop.icon
+or conventional assets/icon.svg. This display-only snapshot is never used to
+authorize a lifecycle action. The shared app/component_icons.py renderer rejects
+active or external SVG references, caches up to 128 pixmaps, respects display
+scaling, and supplies bundled known identities or ID-based monograms. Components
+and Store use this renderer; tab navigation does not reread source.
+
+backend/codex emits a task-first prompt, current adapter contracts, snapshot
+diagnostics, a verification/delivery checklist and required scoped Git delivery.
+Generating/copying a prompt never performs Git writes or a network operation.
+The receiving agent must verify its remote push and protect unrelated work;
+publication remains separate from reviewed runtime installation.

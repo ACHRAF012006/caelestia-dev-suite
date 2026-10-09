@@ -1,6 +1,6 @@
 # Verified automatic Cast Audio Quick Toggles adapter
 
-Manager 0.4 supports one scoped automatic host integration: component ID `cast-audio`, type `caelestia-plugin`, runtime `quickshell`, integration target `caelestia-quick-toggles`. This is a manager-owned adapter, not a public Caelestia registration API or permission for component-supplied patches.
+Manager 0.4 introduced the scoped automatic Cast Audio host integration: component ID `cast-audio`, type `caelestia-plugin`, runtime `quickshell`, integration target `caelestia-quick-toggles`. This is a manager-owned adapter, not a public Caelestia registration API or permission for component-supplied patches.
 
 It supports verified Caelestia KDE commit `e34b6957fad5ce9395841b65be9e3df180ccd65c`. Only `modules/utilities/cards/Toggles.qml` and `modules/nexus/pages/utilities/QuickTogglesPage.qml` beneath the detected shell root can change. Pristine input must match pinned checksums; the exact previous Cast 0.1.1 icon layout is recognized for migration. Other content blocks installation.
 
@@ -15,3 +15,5 @@ After successful installation, enable/disable, restore or uninstall, the manager
 General shell plugins retain explicit enable/reload behavior. The adapter does not grant arbitrary KDE/KWin integrations or general dashboard injection. When upstream files change, verify the new contract and release a compatible manager before applying a new adapter.
 
 Tests use pinned GPL-3.0-only host fixtures under temporary XDG roots, cover install/update/disable/uninstall/restore and failure recovery, and never patch production as a test. Authorized desktop deployment is a separate lifecycle operation.
+
+Manager 0.6.0 adds an independent [Timer dashboard adapter](ANIMATED_TIMER_INTEGRATION.md). It never reuses Cast Audio host files, transforms or receipts. Cast lifecycle behavior remains unchanged.
