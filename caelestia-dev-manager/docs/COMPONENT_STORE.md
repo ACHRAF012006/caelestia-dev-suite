@@ -98,3 +98,14 @@ or rerun `install.sh` from reviewed manager source to update the manager.
 ## Cast Audio panel integration
 
 Cast Audio 0.5.0 requires Dev Manager 0.5.1 or newer. Update the manager by rerunning `./install.sh` from current `caelestia-dev-manager/` source (or the suite bootstrap), then Refresh and review the component update. Manager releases are source/installer updates, not component catalogue entries. The reviewed Cast install automatically adds the expandable row, enables new installations and restarts the shell. See [adapter contract](QUICK_TOGGLES_INTEGRATION.md).
+
+## Generic dashboard components
+
+Notes & Tasks 0.1.0 requires Dev Manager 0.7.0+ and the verified Caelestia KDE
+v2.5.1 commit. Update the manager from `caelestia-dev-manager/` first. Published
+`components/notes-tasks/` is distinct from local `plugins/notes-tasks/`. Store
+validation checks the declaration and referenced QML source; installation also
+checks the actual host release/files and shared page-ID uniqueness. A valid
+Store entry is not proof that a client host is compatible. Publishing never
+installs the component or reloads production. See
+[DASHBOARD_INTEGRATION.md](DASHBOARD_INTEGRATION.md).

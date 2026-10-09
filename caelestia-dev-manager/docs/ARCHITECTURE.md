@@ -91,3 +91,23 @@ diagnostics, a verification/delivery checklist and required scoped Git delivery.
 Generating/copying a prompt never performs Git writes or a network operation.
 The receiving agent must verify its remote push and protect unrelated work;
 publication remains separate from reviewed runtime installation.
+
+## Shared dashboard capability (0.7.0)
+
+`caelestia-dashboard` is a declarative capability for any compatible Quickshell
+plugin. `backend/dashboard_contract.py` validates page identity, title, Material
+icon, relative component and order. `backend/dashboard_integration.py` owns shared
+membership and receipt transactions; `backend/dashboard_compat.py` isolates
+v2.5.1-specific host knowledge. No component can provide patches or host paths.
+The shared receipt composes all installed pages deterministically, preserves
+Timer's legacy manifest and notch, and participates in existing sealed
+backup/journal/recovery operations. Disable retains registration and hides the
+loaded page; uninstall/restore change only that component's membership. Host
+checksums and release markers remain fail-closed. Read
+[DASHBOARD_INTEGRATION.md](DASHBOARD_INTEGRATION.md) for the full contract,
+Timer composition, downgrade constraints and adding another supported version.
+
+Notes & Tasks is an independent published component, not a manager page. Its
+PluginLoader singleton controller owns one standard-library storage helper;
+per-monitor pages share command/delta models. Personal data is under XDG data
+`caelestia-components/notes-tasks`, outside payload and manager ownership.

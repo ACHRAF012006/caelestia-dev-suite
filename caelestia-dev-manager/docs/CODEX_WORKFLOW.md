@@ -4,7 +4,7 @@ In **Codex Context**, enter the request and select **Copy Full Codex Prompt**. C
 
 The UI uses its latest inspection snapshot when generating this prompt so opening the tab does not repeat installed-file hashing. Refresh component information first when you need newly changed runtime/source state. While the initial inspection is loading, prompt generation shows a loading message and Copy leaves the clipboard unchanged.
 
-Future Codex sessions must read PROJECT_CONTEXT.md, README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md, docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md, docs/COMPONENT_STORE.md docs/ANIMATED_TIMER_INTEGRATION.md and this document. Create source under `plugins/<component-id>/`. If the user wants copy/paste output, use `CAELESTIA_DEV_PACKAGE`.
+Future Codex sessions must read PROJECT_CONTEXT.md, README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md, docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md, docs/COMPONENT_STORE.md docs/ANIMATED_TIMER_INTEGRATION.md, docs/DASHBOARD_INTEGRATION.md and this document. Create source under `plugins/<component-id>/`. If the user wants copy/paste output, use `CAELESTIA_DEV_PACKAGE`.
 
 Never make a new component a runtime page inside Dev Manager. Never require Dev Manager to remain open. Never directly modify production when source and an installation plan can be prepared first. Inspect installed Caelestia and current upstream before assuming integration paths or APIs. For a dashboard request, explain the verified limitations and design a supported integration or propose a separate upstream hook for review.
 
@@ -26,7 +26,7 @@ Always commit and push completed task changes using existing credentials, withou
 
 ## Quick Toggles and receiver settings
 
-Read [Quick Toggles integration](QUICK_TOGGLES_INTEGRATION.md). Cast Audio has its own approved automatic Quick Toggles adapter. Animated Timer uses its separate pinned dashboard adapter in manager 0.6.0 and later; read ANIMATED_TIMER_INTEGRATION.md for that target. It places receivers in a separate expandable row and opens only its advanced Settings in a separate app. Do not invent a plugin registration API or execute supplied patch files. Preserve host edits, seal preview state and include the host plan in recovery. Saved private IPv4 receivers and fixed stream ports support routed VLANs; installation prepares active-UFW rules, while router policies remain separate. Google Home APIs document Android/iOS SDKs; do not create a fake Linux sign-in or claim account-based Cast discovery.
+Read [Quick Toggles integration](QUICK_TOGGLES_INTEGRATION.md). Cast Audio has its own approved automatic Quick Toggles adapter. Dashboard components use the shared declarative capability in manager 0.7.0 and later; read DASHBOARD_INTEGRATION.md. Animated Timer retains its legacy target and notch; read ANIMATED_TIMER_INTEGRATION.md for that target. It places receivers in a separate expandable row and opens only its advanced Settings in a separate app. Do not invent a plugin registration API or execute supplied patch files. Preserve host edits, seal preview state and include the host plan in recovery. Saved private IPv4 receivers and fixed stream ports support routed VLANs; installation prepares active-UFW rules, while router policies remain separate. Google Home APIs document Android/iOS SDKs; do not create a fake Linux sign-in or claim account-based Cast discovery.
 
 ## Component identity and completion
 
@@ -37,3 +37,16 @@ known apps have bundled identity icons and other apps get a stable ID-based
 monogram. Prompt generation uses the inspected snapshot without rescanning source
 or running Git/network commands; the receiving coding agent inspects Git before
 edits, completes meaningful checks, and performs the required scoped push.
+
+## Adding future dashboard components
+
+Declare `integration.target = caelestia-dashboard` and the strict page descriptor
+in COMPONENT_SPEC and DASHBOARD_INTEGRATION. Build the component/controller; do
+not copy Timer's host adapter or add ID-specific manager branches. Current support
+is checksum-pinned Caelestia KDE v2.5.1. New host support belongs in the
+compatibility layer and its fixtures/tests. Test membership composition, dirty
+files, both Timer installation orders, rollback and personal-data survival under
+isolated XDG roots. Run the copied-shell dashboard QML probe. Publish complete
+`components/<id>/` and changed manager source in `caelestia-dev-manager/`, validate
+the exact tree, push scoped changes and verify a fresh main Store scan. Production
+installation and reload stay separate from publishing.

@@ -45,3 +45,13 @@ Reinspect and revise this document when upstream changes. Detection is read-only
 ## Animated Timer inspection (2026-10-09)
 
 Installed v2.5.1 dashboard Content.qml and Wrapper.qml matched the pinned reference byte-for-byte. Tabs remain a fixed filtered list; Wrapper lazily unloads content when closed and falls back to width 854. Drawers/Panels.qml owns per-monitor screen, top offset and visibility; ScreenState stores per-monitor selected tab. Theme uses Colours.palette, Tokens.font and rounding. The dedicated manager 0.6.0 Timer adapter adds a conditional plugin Component tab, retains last animated width before unload and supplies a separate non-focusable PanelWindow per wrapper. No upstream registration API was found. See [reviewed Timer integration](ANIMATED_TIMER_INTEGRATION.md).
+
+## Generic dashboard inspection (2026-10-09)
+
+A fresh upstream main fetch still resolved to
+`e34b6957fad5ce9395841b65be9e3df180ccd65c`; installed release markers are v2.5.1.
+Installed dashboard source contains the verified Timer-only bridge. PluginLoader
+still creates plugin objects without a dashboard registration API. Content's
+fixed native list and Wrapper's lazy loading/ScreenState were inspected again.
+Manager 0.7.0 adds a shared manager-owned bridge; see DASHBOARD_INTEGRATION.md.
+Production files and service were not changed during development.

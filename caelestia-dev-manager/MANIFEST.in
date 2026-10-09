@@ -8,3 +8,5 @@ recursive-include tests/fixtures LICENSE
 recursive-include app/assets *.svg
 
 recursive-include plugins/animated-timer *.json *.md *.py *.qml *.js *.svg
+
+recursive-include plugins/notes-tasks *.json *.md *.py *.qml *.js *.svg

@@ -19,3 +19,6 @@ caelestia-dev-manager/plugins/*
 
 # Bundled Timer source supports manager adapter tests and source distributions.
 !caelestia-dev-manager/plugins/animated-timer/
+
+# Bundled Notes & Tasks source supports isolated storage and dashboard tests.
+!caelestia-dev-manager/plugins/notes-tasks/

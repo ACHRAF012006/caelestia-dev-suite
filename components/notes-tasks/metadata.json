@@ -1,0 +1,14 @@
+{
+  "id": "notes-tasks",
+  "name": "Notes & Tasks",
+  "version": "0.1.0",
+  "description": "Native dashboard notes and tasks with fast capture, local autosave and shared monitor state.",
+  "type": "quickshell",
+  "ui": "main.qml",
+  "icon": "edit_note",
+  "restart": true,
+  "author": {
+    "name": "Caelestia Dev Suite"
+  },
+  "settings": []
+}

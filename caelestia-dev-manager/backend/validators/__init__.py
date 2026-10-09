@@ -37,8 +37,8 @@ def manifest_parse(text):
     if not isinstance(m.get("args", []), list) or any(not isinstance(x, str) or any(ord(c) < 32 or ord(c) == 127 for c in x) for x in m.get("args", [])):
         raise SafetyError("args must be a list of safe strings")
     specs = {"dependencies": {"system", "python"}, "desktop": {"icon", "terminal", "categories", "createShortcut", "startupNotify"},
-             "service": {"restart"}, "compatibility": {"plasma", "caelestia_commit"},
-             "integration": {"target"}}
+             "service": {"restart"}, "compatibility": {"plasma", "caelestia_commit", "manager_min_version"},
+             "integration": {"target", "dashboard"}}
     for key, fields in specs.items():
         value = m.get(key, {})
         if not isinstance(value, dict) or set(value) - fields: raise SafetyError(f"Invalid {key} fields")
@@ -63,8 +63,20 @@ def manifest_parse(text):
     target = m.get("integration", {}).get("target")
     if target == "caelestia-dashboard-timer" and (m["id"] != "animated-timer" or m["type"] != "caelestia-plugin" or m["runtime"] != "quickshell"):
         raise SafetyError("The Timer dashboard adapter supports animated-timer Quickshell only")
-    if target not in (None, "caelestia-plugin", "caelestia-quick-toggles", "caelestia-dashboard-timer"):
+    from backend.dashboard_contract import TARGET, declaration
+    if target == TARGET:
+        if m['id'] in {'animated-timer', 'cast-audio'}:
+            raise SafetyError('Legacy integrated components must retain their compatibility targets')
+        if m['type'] != 'caelestia-plugin' or m['runtime'] != 'quickshell':
+            raise SafetyError('Dashboard pages require a Caelestia Quickshell plugin')
+        declaration(m['integration'].get('dashboard'))
+    elif 'dashboard' in m.get('integration', {}):
+        raise SafetyError('dashboard declaration requires the caelestia-dashboard target')
+    if target not in (TARGET, None, "caelestia-plugin", "caelestia-quick-toggles", "caelestia-dashboard-timer"):
         raise SafetyError("Unsupported integration target")
+    minimum = m.get('compatibility', {}).get('manager_min_version')
+    if minimum is not None and not re.fullmatch(r'\d+\.\d+\.\d+', minimum):
+        raise SafetyError('manager_min_version must be major.minor.patch')
     return m
 
 def validate(files, manifest, environment=None):
@@ -74,6 +86,15 @@ def validate(files, manifest, environment=None):
         for path in files: relative(path)
     except SafetyError as e:
         return {"errors": [str(e)], "warnings": [], "valid": False}
+    if manifest.get('integration', {}).get('target') == 'caelestia-dashboard':
+        if manifest['integration']['dashboard']['component'] not in files:
+            errors.append('Dashboard component must exist in source')
+        warnings.append('Requires Dev Manager 0.7.0+ and verified Caelestia KDE v2.5.1. Installation reviews a shared dashboard bridge and restarts the shell.')
+    minimum = manifest.get('compatibility', {}).get('manager_min_version')
+    if minimum:
+        from packaging.version import Version
+        from backend.paths import VERSION
+        if Version(VERSION) < Version(minimum): errors.append('Requires Dev Manager ' + minimum + ' or newer')
     entry = manifest.get("entrypoint")
     if not entry or entry not in files: errors.append("Entrypoint must exist in source")
     expected = {"python": ".py", "python-pyside6": ".py", "shell": ".sh", "qml": ".qml", "quickshell": ".qml"}

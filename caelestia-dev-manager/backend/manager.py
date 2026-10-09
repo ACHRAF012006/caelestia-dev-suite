@@ -513,7 +513,7 @@ class Manager:
         self.transact(record, entries, plan["remove"], new, "Updated installed version" if record.get("installed") else "Installed component", host_plan=plan["host_integration"])
         if m["type"] == "user-service": self.runtime.systemctl("daemon-reload")
         if m["type"] in SHORTCUT_TYPES: self.runtime.refresh_desktop()
-        if host_integration.requested(m) and self.runtime.real:
+        if self.runtime.real and (host_integration.requested(m) or host_integration.requested(record.get("installed_manifest", {}))):
             self._reload_caelestia()
         return new
 
@@ -644,7 +644,8 @@ class Manager:
                 raise
         elif not enabled and m["type"] in {"standalone-app", "script"}: self.runtime.stop(record)
         new = {**record, "enabled": enabled, "reload_required": m["type"] in {"caelestia-plugin", "qml-component"}}
-        self.transact(record, entries, remove, new, "Enabled component" if enabled else "Disabled component")
+        self.transact(record, entries, remove, new, "Enabled component" if enabled else "Disabled component",
+                      host_plan=host_integration.plan(self.paths, m) if host_integration.requested(m) else None)
         if m["type"] in SHORTCUT_TYPES: self.runtime.refresh_desktop()
         if host_integration.requested(m) and self.runtime.real:
             self._reload_caelestia()
@@ -759,7 +760,7 @@ class Manager:
                 if not host_integration.receipt_path(self.paths, record["id"]).is_file():
                     raise SafetyError("Host integration receipt is missing")
                 host_integration.plan(self.paths, installed_manifest)
-                result["host_integration_status"] = "Timer dashboard installed" if record["id"] == "animated-timer" else "Quick Toggles menu installed"
+                result["host_integration_status"] = "Timer dashboard installed" if record["id"] == "animated-timer" else "Dashboard page installed" if installed_manifest.get("integration", {}).get("target") == "caelestia-dashboard" else "Quick Toggles menu installed"
             except (OSError, ValueError) as error:
                 result["host_integration_status"] = str(error)
                 result["modified"].append("Host integration: " + str(error))

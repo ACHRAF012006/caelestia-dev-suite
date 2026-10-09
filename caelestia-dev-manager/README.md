@@ -67,7 +67,7 @@ The inspected upstream and installed shell use `metadata.json` discovery at `$XD
 
 Cast Audio 0.5.0 uses the manager 0.5.1 [verified Quick Toggles adapter](docs/QUICK_TOGGLES_INTEGRATION.md): a redesigned expandable receiver row with desktop/app selection, Fast/Balanced live profiles, tabbed Settings, saved device IPs and an optional fixed audio stream port. Reviewed installation adds the row, enables new installs and restarts Caelestia. Updates preserve disabled state. Removal restores the original host files; later host edits block replacement. Install prepares component-owned catt libraries, known missing audio packages and active-UFW rules for the saved port with native authentication where required. No PC IP is hardcoded. Google account discovery is unavailable in this Linux backend.
 
-Caelestia Animated Timer 0.1.2 uses the separate [Timer adapter](docs/ANIMATED_TIMER_INTEGRATION.md) in manager 0.6.0. It adds a native dashboard Timer tab and per-monitor slim notch using two checksum-pinned host files for Caelestia KDE v2.5.1. Install reviews exact host source, preserves originals and supports recovery/uninstall. Generic dashboard injection and KDE/KWin extensions remain unsupported.
+Caelestia Animated Timer 0.1.2 uses the separate [Timer adapter](docs/ANIMATED_TIMER_INTEGRATION.md) in manager 0.6.0. It adds a native dashboard Timer tab and per-monitor slim notch using two checksum-pinned host files for Caelestia KDE v2.5.1. Install reviews exact host source, preserves originals and supports recovery/uninstall. Manager 0.7.0 adds the reusable [dashboard page capability](docs/DASHBOARD_INTEGRATION.md), composing generic pages with the legacy Timer bridge. KDE/KWin extensions remain unsupported.
 
 ## Development and tests
 
@@ -100,3 +100,17 @@ now leads with the task, documents both verified host adapters, and requires sco
 Git commits/pushes with remote verification unless the request explicitly opts out.
 Push failures must be reported; production installation still uses its reviewed
 lifecycle.
+
+## Reusable dashboard pages (0.7.0)
+
+Dashboard components declare a validated `caelestia-dashboard` page capability.
+One shared manager adapter composes their tabs, keeps Timer's existing notch and
+legacy target, and preserves lifecycle backups/recovery/dirty-host protection.
+Only verified Caelestia KDE v2.5.1 is currently supported. Read
+[the integration contract](docs/DASHBOARD_INTEGRATION.md).
+
+[Notes & Tasks 0.1.0](plugins/notes-tasks/README.md) supplies native notes, tasks,
+quick capture, search, inline editors, archives, subtasks and local autosave. Its
+shared helper and personal-data directory survive updates and uninstall. Update
+Dev Manager to 0.7.0 before reviewing Store installation. Publication does not
+install/enable the component or restart your shell.

@@ -99,3 +99,13 @@ Timer 0.1.2 adds persistent, stoppable completion alarms, an actionable notifica
 and a dashboard Stop control. The notch clamps width to each logical screen with
 edge clearance, uses the dashboard surface/transparency/pitch-black settings, and
 provides a play/pause button with a 220 ms morph. The host adapter stays unchanged.
+
+## Shared pages in manager 0.7.0
+
+Timer-only installations keep the original target, pinned transform and receipt.
+When generic pages are installed, the shared dashboard adapter composes Timer
+first and preserves its notch routing and per-monitor state. Presentation
+activity uses the Timer ID instead of last-tab position. Removal of the last
+generic page reconstructs the legacy-only form. Read
+[DASHBOARD_INTEGRATION.md](DASHBOARD_INTEGRATION.md) for receipts, interrupted
+composition recovery and manager downgrade requirements.

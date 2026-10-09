@@ -63,6 +63,8 @@ def checked_files(files, expected_id=None):
         raise SafetyError("Component entrypoint is missing")
     if manifest.get("desktop", {}).get("icon") and manifest["desktop"]["icon"] not in files:
         raise SafetyError("Component icon is missing")
+    if manifest.get('integration', {}).get('target') == 'caelestia-dashboard' and manifest['integration']['dashboard']['component'] not in files:
+        raise SafetyError('Dashboard component is missing')
     return manifest
 
 

@@ -179,33 +179,47 @@ def recover(paths, proposal):
         atomic_write(path, proposal["receipt_before"].encode(), 0o600)
 
 # Dispatch to independent, fixed adapters; never route dashboard changes through Cast.
-from backend import timer_integration as _timer
+from backend import timer_integration as _timer, dashboard_integration as _dashboard
 _cast_requested, _cast_plan = requested, plan
 _cast_check, _cast_apply, _cast_recover = check, apply, recover
 _cast_receipt_path = receipt_path
 
 
 def requested(manifest):
-    return _cast_requested(manifest) or _timer.requested(manifest)
+    return _cast_requested(manifest) or _timer.requested(manifest) or _dashboard.requested(manifest)
 
 
 def plan(paths, manifest):
+    if manifest.get('id') == 'cast-audio' or _cast_requested(manifest):
+        return _cast_plan(paths, manifest)
+    if _dashboard.participates(paths, manifest):
+        return _dashboard.plan(paths, manifest)
     if manifest.get('id') == 'animated-timer' or _timer.requested(manifest):
         return _timer.plan(paths, manifest)
     return _cast_plan(paths, manifest)
 
 
 def check(paths, proposal):
+    if proposal and proposal.get('id') == _dashboard.ID:
+        return _dashboard.check(paths, proposal)
     return (_timer.check if proposal and proposal.get('id') == 'animated-timer' else _cast_check)(paths, proposal)
 
 
 def apply(paths, proposal):
+    if proposal and proposal.get('id') == _dashboard.ID:
+        return _dashboard.apply(paths, proposal)
     return (_timer.apply if proposal and proposal.get('id') == 'animated-timer' else _cast_apply)(paths, proposal)
 
 
 def recover(paths, proposal):
+    if proposal and proposal.get('id') == _dashboard.ID:
+        return _dashboard.recover(paths, proposal)
     return (_timer.recover if proposal and proposal.get('id') == 'animated-timer' else _cast_recover)(paths, proposal)
 
 
 def receipt_path(paths, component_id='cast-audio'):
-    return _timer.receipt_path(paths) if component_id == 'animated-timer' else _cast_receipt_path(paths)
+    if component_id == 'cast-audio': return _cast_receipt_path(paths)
+    shared, _ = _dashboard.read_receipt(paths)
+    if shared and (component_id in shared['pages'] or component_id == 'animated-timer' and shared['timer']):
+        return _dashboard.receipt_path(paths)
+    return _timer.receipt_path(paths) if component_id == 'animated-timer' else _dashboard.receipt_path(paths)

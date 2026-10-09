@@ -38,7 +38,8 @@ The optional icon must actually exist. Declare a distinct static `desktop.icon` 
 | service.restart | no, on-failure, always; defaults to no |
 | compatibility.plasma | Optional installed Plasma version prefix |
 | compatibility.caelestia_commit | Optional exact installed commit |
-| integration.target | qml-component requires caelestia-plugin; Cast Audio quickshell plugins may declare caelestia-quick-toggles; animated-timer alone may declare caelestia-dashboard-timer in manager 0.6.0 |
+| compatibility.manager_min_version | Optional minimum manager `major.minor.patch` |
+| integration.target | qml-component requires caelestia-plugin; Cast Audio may declare caelestia-quick-toggles; Animated Timer retains caelestia-dashboard-timer; compatible Quickshell plugins may declare caelestia-dashboard in manager 0.7.0 |
 | permissions | Descriptive string list shown during review; this is disclosure, not a security sandbox |
 
 Python/PySide6, standalone QML (`qml6`) and shell runtimes work for apps/commands/services. Caelestia integration requires quickshell. `python-pyside6` must declare a PySide6 Python dependency. `none` creates drafts. General KDE integration is reserved and cannot install in v0.1. Python dependencies support Python runtimes and Quickshell Python sidecars. Sidecars must explicitly use installed `_venv/bin/python`; launch module entrypoints instead of relocated console scripts.
@@ -74,3 +75,28 @@ Source supports UTF-8 text files and SVG; package import rejects traversal, abso
 The Cast Audio-only `caelestia-quick-toggles` adapter requires manager 0.4 or newer. Its reviewed install adds a separate expandable row, enables new installs and restarts the shell. See [Quick Toggles integration](QUICK_TOGGLES_INTEGRATION.md). Other plugins keep the explicit enable/reload workflow.
 
 Animated Timer requires the dedicated [Timer adapter](ANIMATED_TIMER_INTEGRATION.md) in manager 0.6.0; the store does not upgrade managers. Unknown integration targets are rejected.
+
+## Dashboard pages (manager 0.7.0+)
+
+A `caelestia-plugin` with runtime `quickshell` may use integration target
+`caelestia-dashboard` with a required `dashboard` object containing exactly
+`id`, `title`, `icon`, `component`, `order`. Example:
+
+```json
+"integration": {
+  "target": "caelestia-dashboard",
+  "dashboard": {"id": "calendar", "title": "Calendar", "icon": "calendar_month", "component": "DashboardPage.qml", "order": 60}
+}
+```
+
+IDs must be lowercase and unique among all installed dashboard pages; native IDs
+and Timer are reserved. Titles have 1–40 printable characters. Icon is a Material
+symbol name. Component must be an existing relative QML source with no traversal,
+URLs or hidden paths. Order is an integer 1–1000. Unknown options, executable
+patches and arbitrary destinations are rejected. The manager calculates the
+bridge and page URL. The page exposes `controller` (required var) and
+`presentationActive` (bool), and uses responsive layouts/native sizing tokens.
+`compatibility.manager_min_version` optionally declares a semantic minimum manager
+version; Notes & Tasks declares 0.7.0. The old Timer target remains supported.
+Read [the shared integration contract](DASHBOARD_INTEGRATION.md) before writing a
+new dashboard component. Own user data separately in a namespaced XDG location.

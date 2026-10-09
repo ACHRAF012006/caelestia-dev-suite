@@ -1,6 +1,6 @@
 # Project context
 
-Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.6.1. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
+Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.7.0. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
 
 Read README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md (alias to COMPONENT_SPEC), docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md, docs/CODEX_WORKFLOW.md and docs/COMPONENT_STORE.md before changing component behavior.
 
@@ -26,7 +26,7 @@ Cast Audio 0.2 declares integration.target=caelestia-quick-toggles. The manager 
 
 Manager 0.5 supports private Python environments for Quickshell sidecars. Cast Audio 0.5.0 uses installed _venv/bin/python via src/launcher.py and invokes catt.cli as a module to avoid staging shebangs. Installation reviews fixed ffmpeg/pactl/parec package mappings and portable active-UFW rules through native authentication; no component can supply privileged commands. Select the current PC address by receiver route, never hardcode development IPs. Do not claim audio works from a Cast connection sound or LOAD acknowledgement: verify receiver bytes and PLAYING.
 
-Animated Timer 0.1.2 uses the separate manager-owned `caelestia-dashboard-timer` adapter in `backend/timer_integration.py` (manager 0.6.0). It pins v2.5.1 and two dashboard host files, with independent receipts and existing recovery coordination. Read docs/ANIMATED_TIMER_INTEGRATION.md. Generic dashboard injection remains unsupported. Never deploy or restart production as a development test.
+Animated Timer 0.1.2 uses the separate manager-owned `caelestia-dashboard-timer` adapter in `backend/timer_integration.py` (manager 0.6.0). It pins v2.5.1 and two dashboard host files, with independent receipts and existing recovery coordination. Read docs/ANIMATED_TIMER_INTEGRATION.md. Manager 0.7.0 adds the shared capability adapter in docs/DASHBOARD_INTEGRATION.md; Timer-only installations retain their existing adapter. Never deploy or restart production as a development test.
 
 Manager 0.6.1 shows shared per-component SVG icons in Components and the Store.
 Inspections carry bounded icon source as display data; navigation never rereads
