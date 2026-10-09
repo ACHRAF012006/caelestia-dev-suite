@@ -36,6 +36,7 @@ ShellRoot {
     property int waits: 0
     property string noteId: ""
     property string taskId: ""
+    property string undatedId: ""
     property var windows: []
     property bool deferredObserved: false
     property var delayedModel: null
@@ -130,6 +131,7 @@ ShellRoot {
             property var screenState: ScreenState { modelData: monitor.modelData }
             property var content: null
             property var notesPage: null
+            property real checkSize: 0
             TestCase { id: inputTest; name: "NotesInput"; when: false }
             Rectangle {
                 id: canvas
@@ -142,6 +144,24 @@ ShellRoot {
                 field.forceActiveFocus();
                 inputTest.keyClick(Qt.Key_A, Qt.ControlModifier);
                 for (const letter of value) inputTest.keyClick(letter, Qt.NoModifier, 0);
+            }
+            function progress(total, done) {
+                const ring = root.child(notesPage, "notesTasksProgress");
+                root.check(ring.total === total && ring.completed === done, "task progress stage " + root.stage + " expected " + done + "/" + total + " got " + ring.completed + "/" + ring.total);
+                root.check(root.child(ring, "notesTasksDoneCount").text === String(done), "done counter label");
+                root.check(root.child(ring, "notesTasksTotalCount").text === "/ " + total, "total counter label");
+            }
+            function checkboxAligned() {
+                const row = root.child(notesPage, "notesTasksTasksList").itemAtIndex(0);
+                root.check(!!row, "task row for checkbox geometry");
+                const button = root.child(row, "notesTasksComplete"), circle = root.child(button, "notesTasksCheckCircle"), glyph = root.child(button, "notesTasksCheckGlyph"), title = root.child(row, "notesTasksTaskTitle");
+                root.check(Math.abs(button.width - button.height) < 0.1, "checkbox stays square");
+                if (!checkSize) checkSize = button.width;
+                root.check(Math.abs(button.width - checkSize) < 0.1, "checkbox size stable on completion");
+                const center = button.mapToItem(row, button.width / 2, button.height / 2), ringCenter = circle.mapToItem(row, circle.width / 2, circle.height / 2), glyphCenter = glyph.mapToItem(row, glyph.width / 2, glyph.height / 2);
+                root.check(Math.abs(center.x - ringCenter.x) < 0.1 && Math.abs(center.y - ringCenter.y) < 0.1 && Math.abs(center.x - glyphCenter.x) < 0.1 && Math.abs(center.y - glyphCenter.y) < 0.1, "check glyph and circle share center");
+                root.check(Math.abs(center.y - title.mapToItem(row, 0, title.height / 2).y) < 1.5, "checkbox aligns to single-line title stage " + root.stage + " button=" + center.y + " title=" + title.mapToItem(row, 0, title.height / 2).y + " textheight=" + title.height + " buttonheight=" + button.height + " title=" + title.text);
+                root.check(circle.width <= button.width && circle.height <= button.height, "completion circle not clipped");
             }
             function tilesMatch() {
                 const grid = root.child(notesPage, "notesTasksNotesList");
@@ -189,10 +209,12 @@ ShellRoot {
                     root.check(list.count === 1, "notes visible on every monitor");
                     root.check(!root.child(notesPage, "notesTasksNotesPane").selectedId, "external creation does not steal editor focus");
                     root.check(root.child(notesPage, "notesTasksTasksList").count === 2, "tasks visible on every monitor");
+                    progress(3, 1);
                     root.child(notesPage, "notesTasksSearch").text = "sharedtag";
                 } else if (stage === 4) {
                     root.check(root.child(notesPage, "notesTasksNotesList").count === 1, "tag search note");
                     root.check(root.child(notesPage, "notesTasksTasksList").count === 0, "tag search tasks");
+                    progress(0, 0);
                     root.child(notesPage, "notesTasksSearch").text = "";
                     root.child(notesPage, "notesTasksNotesPane").openRecord(root.noteId);
                     root.child(notesPage, "notesTasksTasksPane").openRecord(root.taskId);
@@ -217,15 +239,19 @@ ShellRoot {
                     capture.text = "Enter-created task"; capture.accepted();
                 } else if (stage === 7) {
                     root.check(Object.values(root.controller.tasks).some(t => t.title === "Enter-created task"), "Enter quick capture");
+                    progress(5, 2); checkboxAligned();
                     root.child(notesPage, "notesTasksTasksPane").filter = "completed";
                 } else if (stage === 8) {
                     root.check(root.child(notesPage, "notesTasksTasksList").count === 2, "completed filter");
+                    progress(5, 2); checkboxAligned();
                     root.child(notesPage, "notesTasksTasksPane").filter = "today";
                 } else if (stage === 9) {
                     root.check(root.child(notesPage, "notesTasksTasksList").count === 1, "today filter");
+                    progress(1, 0);
                     root.child(notesPage, "notesTasksTasksPane").filter = "upcoming";
                 } else if (stage === 10) {
                     root.check(root.child(notesPage, "notesTasksTasksList").count === 0, "upcoming excludes completed");
+                    progress(1, 1);
                     root.child(notesPage, "notesTasksTasksPane").filter = "all";
                     root.child(notesPage, "notesTasksTasksPane").selectedId = root.taskId;
                     const editor = root.child(notesPage, "notesTasksTaskEditor");
@@ -233,9 +259,8 @@ ShellRoot {
                 } else if (stage === 11) {
                     const editor = root.child(notesPage, "notesTasksTaskEditor");
                     root.check(editor.entry.subtasks.length === 1, "subtasks rendered");
-                    notesPage.settingsOpen = true;
+                    root.check(notesPage.settingsOpen === undefined && root.child(notesPage, "notesTasksConfirmDelete") === null, "settings and confirmation UI removed");
                 } else if (stage === 12) {
-                    notesPage.settingsOpen = false;
                     // Native notch still opens Timer at its actual index.
                     wrapper.openTimerTab();
                     root.check(screenState.dashboardTab === content.dashboardTabs.findIndex(tab => tab.id === "timer"), "Timer notch routing");
@@ -252,7 +277,7 @@ ShellRoot {
                     }
                 } else if (stage === 17) {
                     root.check(!root.delayedModel.model.get(root.delayedModel.positions["t3"]).entry.completed && !Object.keys(root.delayedModel.pending).length, "rapid completion undo settles without removal");
-                    tilesMatch();
+                    tilesMatch(); progress(6, 3);
                     const screenshot = Quickshell.env("NOTES_PROBE_SCREENSHOT");
                     if (screenshot && modelData === Quickshell.screens[0]) canvas.grabToImage(result => result.saveToFile(screenshot));
                 } else if (stage === 18 && modelData === Quickshell.screens[0]) {
@@ -283,12 +308,15 @@ ShellRoot {
                 } else if (stage === 23 && modelData === Quickshell.screens[0]) {
                     root.check(root.deferredObserved && root.controller.tasks[root.taskId].completed, "task completion action persisted after visual hold");
                     root.check(root.child(notesPage, "notesTasksTasksList").count === 2, "completion leaves open view after animation");
+                    progress(6, 4);
                     root.controller.edit("tasks", root.taskId, {completed: false});
-                    notesPage.requestDelete("notes", root.noteId);
-                    root.child(notesPage, "notesTasksConfirmDelete").clicked();
+                    root.child(notesPage, "notesTasksNotesPane").openRecord(root.noteId);
+                    root.child(notesPage, "notesTasksNoteActions").clicked();
+                    root.child(notesPage, "notesTasksDeleteNote").clicked();
                 } else if (stage === 24 && modelData === Quickshell.screens[0]) {
                     root.check(!root.controller.notes[root.noteId] && !root.child(notesPage, "notesTasksNotesPane").selectedId, "delete removes note and closes editor");
                     root.check(!root.controller.tasks[root.taskId].completed, "uncomplete retained task");
+                    progress(6, 3);
                     const pinned = Object.values(root.controller.notes).find(n => n.title === "A calmer workspace");
                     root.controller.send({action: "duplicate", kind: "notes", id: pinned.id});
                     GlobalConfig.appearance.font.scale = 1.3;
@@ -319,6 +347,28 @@ ShellRoot {
                     root.check(!!note && root.child(notesPage, "notesTasksNotesPane").selectedId === note.id, "Ctrl+Enter captures and opens the requesting editor");
                     root.check(!root.child(root.windows[1].notesPage, "notesTasksNotesPane").selectedId && !root.child(canvas.page, "notesTasksNotesPane").selectedId, "capture reply remains local to the requesting page");
                     root.controller.send({action: "flush"});
+                } else if (stage === 28) {
+                    progress(6, 3);
+                    if (modelData === Quickshell.screens[0]) {
+                        root.undatedId = Object.values(root.controller.tasks).find(t => t.title === "Sketch a new idea").id;
+                        root.child(notesPage, "notesTasksTasksPane").openRecord(root.undatedId);
+                        root.child(notesPage, "notesTasksEditorComplete").clicked();
+                    }
+                } else if (stage === 29) {
+                    progress(6, 4);
+                    root.check(root.controller.tasks[root.undatedId].completed, "undated task completion shared across monitors");
+                    if (modelData === Quickshell.screens[0]) root.child(notesPage, "notesTasksEditorComplete").clicked();
+                } else if (stage === 30) {
+                    progress(6, 3);
+                    root.check(!root.controller.tasks[root.undatedId].completed, "undated task uncompletion shared across monitors");
+                    if (modelData === Quickshell.screens[0]) {
+                        root.check(root.controller.settings.confirmDelete, "historical confirmation preference retained");
+                        root.child(notesPage, "notesTasksDeleteTask").clicked();
+                    }
+                } else if (stage === 31) {
+                    progress(5, 3);
+                    root.check(!root.controller.tasks[root.undatedId] && !root.child(notesPage, "notesTasksTasksPane").selectedId, "task deletion immediate and editor closed");
+                    if (modelData === Quickshell.screens[0]) root.controller.send({action: "flush"});
                 }
             }
         }
@@ -369,9 +419,9 @@ ShellRoot {
                 const captures = Object.values(root.controller.tasks).filter(t => t.title === "Enter-created task");
                 captures.forEach((t, i) => root.controller.edit("tasks", t.id, {title: i === 0 ? "Sketch a new idea" : "Take a short walk"}));
                 root.controller.send({action: "flush"});
-            } else if (root.stage === 28) {
+            } else if (root.stage === 32) {
                 root.check(!root.controller.saving, "UI changes flushed before shell restart");
-                console.log("DASHBOARD QML PROBE PASSED: two monitors, scale 1.25, native tabs, Timer routing, notes/tasks/search/edit/subtasks/quick capture/settings/stacking, keyboard CRUD, delayed completion/undo, scaled fonts, global reduced motion, 300-note/2000-task models");
+                console.log("DASHBOARD QML PROBE PASSED: two monitors, scale 1.25, native tabs, Timer routing, notes/tasks/search/edit/subtasks/quick capture/stacking, settings removal, immediate deletion, per-view progress including undated tasks, centered checkboxes, keyboard CRUD, delayed completion/undo, scaled fonts, global reduced motion, 300-note/2000-task models");
                 Qt.quit();
             }
         }

@@ -35,7 +35,7 @@ StyledRect {
             MaterialIcon { text: "stylus_note"; color: Colours.palette.m3primary; fontStyle: Tokens.font.icon.small }
             StyledText { Layout.fillWidth: true; text: root.entry?.pinned ? qsTr("Pinned thought") : qsTr("A little space to think"); font: Tokens.font.label.small; color: Colours.palette.m3onSurfaceVariant; elide: Text.ElideRight }
             ActionButton { symbol: root.entry?.pinned ? "keep" : "keep_off"; description: qsTr("Pin / unpin"); selected: root.entry?.pinned ?? false; motion: root.controller.motion; onClicked: root.controller.edit("notes", root.recordId, {pinned: !root.entry.pinned}) }
-            ActionButton { symbol: "more_horiz"; description: qsTr("Note actions and tags"); selected: root.propertiesOpen; motion: root.controller.motion; onClicked: root.propertiesOpen = !root.propertiesOpen }
+            ActionButton { objectName: "notesTasksNoteActions"; symbol: "more_horiz"; description: qsTr("Note actions and tags"); selected: root.propertiesOpen; motion: root.controller.motion; onClicked: root.propertiesOpen = !root.propertiesOpen }
         }
         InputField { id: title; objectName: "notesTasksNoteTitle"; Layout.fillWidth: true; padding: 0; font: Tokens.font.title.large; placeholderText: qsTr("Title, if you like"); background: null; Keys.onPressed: event => root.done(event); onTextEdited: root.controller.edit("notes", root.recordId, {title: text}) }
         ScrollView {
@@ -51,7 +51,7 @@ StyledRect {
                     Layout.fillWidth: true; spacing: Tokens.spacing.small
                     ActionButton { text: qsTr("Duplicate"); symbol: "content_copy"; motion: root.controller.motion; onClicked: root.controller.send({action: "duplicate", kind: "notes", id: root.recordId}) }
                     ActionButton { text: root.entry?.archived ? qsTr("Unarchive") : qsTr("Archive"); symbol: "archive"; motion: root.controller.motion; onClicked: { root.controller.edit("notes", root.recordId, {archived: !root.entry.archived}); root.closeRequested(); } }
-                    ActionButton { text: qsTr("Delete"); symbol: "delete"; destructive: true; motion: root.controller.motion; onClicked: root.deleteRequested("notes", root.recordId) }
+                    ActionButton { objectName: "notesTasksDeleteNote"; text: qsTr("Delete"); symbol: "delete"; destructive: true; motion: root.controller.motion; onClicked: root.deleteRequested("notes", root.recordId) }
                 }
             }
         }

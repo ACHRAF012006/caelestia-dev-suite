@@ -5,7 +5,7 @@ Caelestia Dev Manager and independent touchscreen components for CachyOS / KDE P
 ## Repository layout
 
 - **`caelestia-dev-manager/`** — Dev Manager 0.7.0, installer, documentation and tests.
-- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1, Cast Audio 0.5.1, Animated Timer 0.1.2 and Notes & Tasks 0.2.1 are included.
+- **`components/`** — published standalone applications, services and reviewed Caelestia components. TouchDeck 0.1.1, Cast Audio 0.5.1, Animated Timer 0.1.2 and Notes & Tasks 0.2.2 are included.
 
 The manager handles installation and lifecycle. Components continue running after it closes.
 
@@ -48,7 +48,7 @@ For [Cast Audio](components/cast-audio/README.md), update Dev Manager to **0.6.1
 
 For [Animated Timer](components/animated-timer/README.md), update Dev Manager to **0.6.1**, then Refresh the Store and review Install. It adds a native Timer dashboard tab and a screen-safe top notch with animated play/pause controls. Completion rings until Stop in its notification or Timer tab. The dedicated adapter supports only Caelestia KDE v2.5.1 at its pinned commit and preserves/restores the original host files.
 
-For [Notes & Tasks](components/notes-tasks/README.md), update Dev Manager to **0.7.0**, Refresh the Store and review Install. The 0.2.1 page recomposes capture, paper-like note cards, task progress and tags as native dashboard widgets. Notes, tasks, search, inline editors, archives and subtasks retain the v1 backend and share local autosave across monitors. Personal data remains in XDG data after updates or uninstall. The [generic dashboard contract](caelestia-dev-manager/docs/DASHBOARD_INTEGRATION.md) lets future components register pages through validated manifests; it preserves the legacy Timer notch and requires the verified Caelestia KDE v2.5.1 host. Publishing never installs or reloads the production shell.
+For [Notes & Tasks](components/notes-tasks/README.md), update Dev Manager to **0.7.0**, Refresh the Store and review Install. The 0.2.2 page recomposes capture, paper-like note cards, task progress and tags as native dashboard widgets, with per-view completion counts, centered checkboxes and immediate deletion. The component settings panel has been removed. Notes, tasks, search, inline editors, archives and subtasks retain the v1 backend and share local autosave across monitors. Personal data remains in XDG data after updates or uninstall. The [generic dashboard contract](caelestia-dev-manager/docs/DASHBOARD_INTEGRATION.md) lets future components register pages through validated manifests; it preserves the legacy Timer notch and requires the verified Caelestia KDE v2.5.1 host. Publishing never installs or reloads the production shell.
 
 Components and Store now share distinct app icons. **Codex Context** includes the verified host adapter contracts and requires scoped Git commits/pushes with remote verification for completed code tasks unless the request explicitly opts out.
 

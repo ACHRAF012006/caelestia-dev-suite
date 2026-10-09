@@ -11,10 +11,14 @@ for real QML against a **copied** installed shell, private D-Bus/XDG directories
 and two virtual KWin outputs at fractional scale 1.25. Requires Quickshell, the
 installed Caelestia Qt modules, KWin and dbus-run-session. The probe loads a second
 synthetic dashboard component and Animated Timer, then tests native ordering,
-shared data, inline editing, search, capture, subtasks, task filters, preferences,
+shared data, inline editing, search, capture, subtasks, task filters, retained preferences,
 responsive stacking and notch routing. It starts from a frozen v1 document,
-types into editors with QtTest key events, exercises deletion, exact tag filters,
-completion/undo and row delay, checks retained search rows and reused grid cells,
+types into editors with QtTest key events, checks settings removal and immediate
+note/task deletion even with the legacy confirmation preference enabled, exercises
+exact tag filters,
+completion/undo and row delay, checks progress across every task view, search and
+both monitors (including undated tasks), verifies centered, fixed-size completion
+controls in open/completed rows, checks retained search rows and reused grid cells,
 tests 130% font scaling and global/component reduced motion, then launches a
 second shell process against the same temporary data to compare its snapshot.
 The screenshot option writes wide and `-narrow.png` previews with the current

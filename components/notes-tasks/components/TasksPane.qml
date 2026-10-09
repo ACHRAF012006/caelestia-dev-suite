@@ -16,26 +16,33 @@ StyledRect {
     property string filter: "active"
     property bool presentationActive: true
     property var known: ({})
-    property int todayTotal: 0
-    property int todayDone: 0
+    property int taskTotal: 0
+    property int taskDone: 0
     signal deleteRequested(string kind, string recordId)
     signal captureRequested()
+    // Progress includes completed records, even when the list hides them.
+    // Open/Done/All share the whole searched collection; dated views use their scope.
     function counts(entry) {
-        if (!entry?.due.date || entry.due.date > tasks.day) return false;
+        if (!entry || !Query.matches("tasks", entry, query, "all", true, tasks.day)) return false;
+        if (filter === "upcoming") return entry.due.date > tasks.day;
+        if (filter !== "today") return true;
+        if (!entry.due.date || entry.due.date > tasks.day) return false;
         if (!entry.completed || entry.due.date === tasks.day) return true;
         const done = new Date(entry.completedAt);
         const completedDay = done.getFullYear() + "-" + ("0" + (done.getMonth() + 1)).slice(-2) + "-" + ("0" + done.getDate()).slice(-2);
         return completedDay === tasks.day;
     }
+    onQueryChanged: resetStats()
+    onFilterChanged: resetStats()
     function resetStats() {
-        known = {}; todayTotal = 0; todayDone = 0;
+        known = {}; taskTotal = 0; taskDone = 0;
         for (const entry of Object.values(controller.tasks)) updateStats(entry.id, entry);
     }
     function updateStats(id, entry) {
         const old = known[id];
-        if (counts(old)) { --todayTotal; if (old.completed) --todayDone; }
+        if (counts(old)) { --taskTotal; if (old.completed) --taskDone; }
         if (entry) known[id] = entry; else delete known[id];
-        if (counts(entry)) { ++todayTotal; if (entry.completed) ++todayDone; }
+        if (counts(entry)) { ++taskTotal; if (entry.completed) ++taskDone; }
     }
     function openRecord(id) { selectedId = id; editor.focusTitle(); }
     function moveRecord(id, direction) {
@@ -69,10 +76,10 @@ StyledRect {
             Layout.fillWidth: true
             ColumnLayout {
                 Layout.fillWidth: true; spacing: Tokens.spacing.extraSmall
-                StyledText { text: qsTr("Today"); font: Tokens.font.title.large }
-                StyledText { text: root.todayTotal ? qsTr("One thing at a time.") : qsTr("Make room for what matters."); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Colours.palette.m3onSurfaceVariant; font: Tokens.font.label.small }
+                StyledText { text: root.filter === "today" ? qsTr("Today") : root.filter === "upcoming" ? qsTr("Upcoming") : root.filter === "completed" ? qsTr("Completed") : qsTr("Tasks"); font: Tokens.font.title.large }
+                StyledText { text: root.taskTotal ? (root.filter === "completed" ? root.taskDone + " " + qsTr("completed") : (root.taskTotal - root.taskDone) + " " + qsTr("left")) : qsTr("Make room for what matters."); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Colours.palette.m3onSurfaceVariant; font: Tokens.font.label.small }
             }
-            TaskProgress { objectName: "notesTasksProgress"; completed: root.todayDone; total: root.todayTotal; motion: root.controller.motion }
+            TaskProgress { objectName: "notesTasksProgress"; completed: root.taskDone; total: root.taskTotal; motion: root.controller.motion }
         }
         Flow {
             visible: !root.selectedId; Layout.fillWidth: true
@@ -95,19 +102,19 @@ StyledRect {
             section.property: "group"
             section.delegate: StyledText { required property string section; width: list.width; text: section; font: Tokens.font.label.small; color: Colours.palette.m3onSurfaceVariant; topPadding: Tokens.padding.small; bottomPadding: Tokens.padding.extraSmall }
             delegate: TaskRow {
-                        required property string recordId
-            id: card
-            entry: root.controller.record("tasks", recordId)
-            onRecordIdChanged: entry = Qt.binding(() => root.controller.record("tasks", recordId))
-            Connections {
-                target: root.controller
-                function onReset() { if (root.controller.record("tasks", card.recordId)) card.entry = Qt.binding(() => root.controller.record("tasks", card.recordId)); }
-                function onChanged(kind, id, entry) { if (kind === "tasks" && id === card.recordId && entry) card.entry = entry; }
-            }
+                id: card
+                required property string recordId
+                entry: root.controller.record("tasks", recordId)
+                onRecordIdChanged: entry = Qt.binding(() => root.controller.record("tasks", recordId))
+                Connections {
+                    target: root.controller
+                    function onReset() { if (root.controller.record("tasks", card.recordId)) card.entry = Qt.binding(() => root.controller.record("tasks", card.recordId)); }
+                    function onChanged(kind, id, entry) { if (kind === "tasks" && id === card.recordId && entry) card.entry = entry; }
+                }
                 width: list.width; height: implicitHeight
                 ListView.onReused: { height = Qt.binding(() => implicitHeight); opacity = 1; }
                 controller: root.controller
-                onEditRequested: id => root.selectedId = id
+                onEditRequested: id => root.openRecord(id)
             }
             add: Transition { Anim { properties: "opacity"; from: 0; to: 1; duration: root.controller.motion ? Math.min(160, Tokens.anim.durations.small) : 0; type: Anim.FastEffects } }
             remove: Transition { Anim { properties: "opacity,height"; to: 0; duration: root.controller.motion ? Math.min(150, Tokens.anim.durations.small) : 0; type: Anim.FastEffects } }

@@ -46,6 +46,14 @@ modified-file protection and owned-only uninstall using mocked downloads.
 Desktop shortcut tests preserve the declared original SVG and its absolute
 installed path through enable/disable and uninstall.
 
+The Notes & Tasks copied-shell probe (`scripts/dashboard_qml_probe.py`) uses two
+private virtual KWin outputs and temporary XDG data. It verifies per-view/search
+task counters, undated completion/undo across monitors, centered fixed-size
+completion controls, removed settings UI and immediate note/task deletion with
+the historical confirmation preference enabled. It also exercises keyboard
+capture/editing, filters, fonts, reduced motion, large models and a second shell
+process loading the same v1 data. See the component's TESTING.md for requirements.
+
 ## Desktop acceptance
 
 The explicit acceptance helper performs live **harmless unique dummy** app/service checks. It never installs or modifies a Caelestia plugin and never restarts the production shell.

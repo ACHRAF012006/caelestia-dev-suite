@@ -14,6 +14,7 @@ StyledRect {
     implicitHeight: body.implicitHeight + Tokens.padding.small * 2
     radius: Tokens.rounding.large
     color: hover.hovered ? Colours.tPalette.m3surfaceContainerHigh : "transparent"
+    readonly property real titleLineHeight: taskTitle.implicitHeight / Math.max(1, taskTitle.lineCount)
     HoverHandler { id: hover }
     Behavior on color { ColorAnimation { duration: root.controller.motion ? Math.min(160, Tokens.anim.durations.small) : 0 } }
     RowLayout {
@@ -21,26 +22,26 @@ StyledRect {
         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
         anchors.margins: Tokens.padding.small
         spacing: Tokens.spacing.small
-        Item {
-            implicitWidth: complete.implicitWidth; implicitHeight: complete.implicitHeight
-            CircularProgress { anchors.centerIn: parent; implicitSize: parent.width - Tokens.padding.extraSmall; value: root.entry.completed ? 1 : 0; strokeWidth: 2; spacing: 0; wavePaused: true; bgColour: Colours.palette.m3onSurfaceVariant; fgColour: Colours.palette.m3secondary; Behavior on clampedVal { Anim { duration: root.controller.motion ? Math.min(160, Tokens.anim.durations.small) : 0; type: Anim.FastEffects } } }
-            ActionButton {
-                id: complete
-                objectName: "notesTasksComplete"
-                symbol: root.entry.completed ? "check" : ""
-                implicitWidth: Tokens.padding.large * 1.5
-                description: root.entry.completed ? qsTr("Mark incomplete") : qsTr("Complete task")
-                motion: root.controller.motion
-                onClicked: root.controller.edit("tasks", root.entry.id, {completed: !root.entry.completed})
-            }
+        TaskCheck {
+            id: complete
+            objectName: "notesTasksComplete"
+            Layout.alignment: Qt.AlignTop
+            Layout.topMargin: Math.max(0, (root.titleLineHeight - implicitHeight) / 2)
+            completed: root.entry.completed
+            motion: root.controller.motion
+            onClicked: root.controller.edit("tasks", root.entry.id, {completed: !root.entry.completed})
         }
         ColumnLayout {
+            Layout.alignment: Qt.AlignTop
+            Layout.topMargin: Math.max(0, (complete.implicitHeight - root.titleLineHeight) / 2)
             Layout.fillWidth: true; Layout.minimumWidth: 0
             spacing: Tokens.spacing.extraSmall
             opacity: root.entry.completed ? 0.5 : 1
             Behavior on opacity { Anim { duration: root.controller.motion ? Math.min(160, Tokens.anim.durations.small) : 0; type: Anim.FastEffects } }
             StyledText {
+                id: taskTitle
                 Layout.fillWidth: true
+                objectName: "notesTasksTaskTitle"
                 text: root.entry.title || qsTr("Untitled task")
                 font.strikeout: root.entry.completed
                 maximumLineCount: root.controller.settings.compact ? 1 : 2
@@ -54,6 +55,6 @@ StyledRect {
                 elide: Text.ElideRight; color: Colours.palette.m3onSurfaceVariant; font: Tokens.font.label.small
             }
         }
-        ActionButton { symbol: "arrow_outward"; description: qsTr("Edit task and details"); opacity: hover.hovered || activeFocus ? 1 : 0.35; motion: root.controller.motion; onClicked: root.editRequested(root.entry.id) }
+        ActionButton { Layout.alignment: Qt.AlignTop; Layout.topMargin: (Math.max(complete.implicitHeight, root.titleLineHeight) - implicitHeight) / 2; symbol: "arrow_outward"; description: qsTr("Edit task and details"); opacity: hover.hovered || activeFocus ? 1 : 0.35; motion: root.controller.motion; onClicked: root.editRequested(root.entry.id) }
     }
 }

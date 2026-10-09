@@ -1,4 +1,4 @@
-# Notes & Tasks 0.2.1
+# Notes & Tasks 0.2.2
 
 A native Caelestia KDE dashboard page, requiring Dev Manager 0.7.0+ and verified
 Caelestia KDE v2.5.1 (`e34b6957fad5ce9395841b65be9e3df180ccd65c`). Install from the
@@ -12,7 +12,7 @@ task, Ctrl+F expands search, and Escape closes secondary controls when the shell
 grants keyboard focus. Ctrl+Enter finishes an inline note edit.
 
 The page is a collection of shell-themed widgets: a large capture surface, a
-virtualized paper-card grid, a Today completion ring and task list, and clickable
+virtualized paper-card grid, a contextual completion ring and task list, and clickable
 tag pills. Pinned cards have a subtle accent shape. Different card heights sit
 inside stable grid cells; there is no custom masonry engine. On narrow pages the
 widgets stack in a scrollable composition; each collection also scrolls
@@ -33,14 +33,19 @@ All Tasks filters are available; All Tasks includes completed items. Completion
 is retained indefinitely. Completion writes immediately; visible rows fade and
 finish their ring transition before their filter membership/order changes after
 at most 180 ms. Completing again quickly interrupts the previous presentation
-state. The Done filter permits uncompletion. Manual ordering applies within date sections; changing
-the sort in Settings does not erase manual order. Date/time are organizational
+state. The Done filter permits uncompletion. The completion counter includes undated
+tasks in Open, Done and All; Today and Next use their respective date scopes.
+Completed items remain in the progress denominator even when hidden from the list.
+Search narrows both the list and its counter. Completion controls stay centered
+and keep the same size when checked. Manual ordering applies within date sections. Date/time are organizational
 metadata in this version, not scheduled reminders.
 
 Search checks note title/body, task title/details/subtasks and tags in memory.
-Settings offers default section, completed visibility, note/task sorting, compact
-cards, animation preference and delete confirmation. Reduced animation disables
-component-owned transitions. Shell duration tokens are respected and component
+The settings button and panel have been removed. Delete removes a note or task
+immediately, without a confirmation step. Existing stored preferences are retained
+for data compatibility; the old delete-confirmation preference no longer affects
+this page. Existing reduced-animation preferences still disable component-owned
+transitions. Shell duration tokens are respected and component
 motion is capped at 150–200 ms; global shell tab animations remain shell settings.
 Decorative paper/ink details respond to interaction and never loop while idle.
 All monitors share one PluginLoader controller and one exclusive storage writer.
@@ -75,7 +80,7 @@ remain only in memory, so preserve their text before reloading.
 maintains incremental sorted/filter models; GridView virtualizes fixed-size note
 cells containing differently sized cards, and ListView virtualizes task rows.
 `components/` separates controls, grids, editors, capture, search, tags, progress,
-paper marks, empty states and settings. Shared shell StyledRect, StyledText,
+paper marks, empty states and shared completion controls. Shared shell StyledRect, StyledText,
 MaterialIcon, Anim and CircularProgress primitives supply the visual language. `helper/domain.py` validates field-level operations and produces DTOs;
 `helper/storage.py` handles schemas and persistence; `helper/main.py` serializes
 commands and debounces saves without idle polling. See [SCHEMA.md](SCHEMA.md) and
@@ -86,5 +91,5 @@ Note content has a format envelope; records retain extension maps. Tasks reserve
 recurrence and project IDs. These allow later Markdown, folders, projects,
 attachments, calendars, encryption and synchronization to be designed without
 coupling the UI to raw storage. The storage schema and Python helper are unchanged from 0.1.0; this release needs
-no data migration. Version 0.2.1 does not implement those future features,
+no data migration. Version 0.2.2 does not implement those future features,
 cloud sync, notifications or reminders.

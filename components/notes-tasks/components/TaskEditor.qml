@@ -34,8 +34,8 @@ ColumnLayout {
         Layout.fillWidth: true
         ActionButton { symbol: "arrow_back"; description: qsTr("Back to tasks"); motion: root.controller.motion; onClicked: root.closeRequested() }
         StyledText { Layout.fillWidth: true; text: qsTr("Edit task"); font: Tokens.font.body.medium }
-        ActionButton { symbol: root.entry?.completed ? "check_circle" : "radio_button_unchecked"; description: qsTr("Complete / uncomplete"); selected: root.entry?.completed ?? false; motion: root.controller.motion; onClicked: root.controller.edit("tasks", root.recordId, {completed: !root.entry.completed}) }
-        ActionButton { symbol: "delete"; description: qsTr("Delete task"); destructive: true; motion: root.controller.motion; onClicked: root.deleteRequested("tasks", root.recordId) }
+        TaskCheck { objectName: "notesTasksEditorComplete"; completed: root.entry?.completed ?? false; motion: root.controller.motion; onClicked: root.controller.edit("tasks", root.recordId, {completed: !root.entry.completed}) }
+        ActionButton { objectName: "notesTasksDeleteTask"; symbol: "delete"; description: qsTr("Delete task"); destructive: true; motion: root.controller.motion; onClicked: root.deleteRequested("tasks", root.recordId) }
     }
     ScrollView {
         Layout.fillWidth: true; Layout.fillHeight: true
@@ -78,7 +78,7 @@ ColumnLayout {
                 RowLayout {
                     required property var modelData
                     Layout.fillWidth: true
-                    ActionButton { symbol: parent.modelData.completed ? "check_circle" : "radio_button_unchecked"; description: qsTr("Toggle subtask"); motion: root.controller.motion; onClicked: root.subtask("subtask-toggle", parent.modelData.id) }
+                    TaskCheck { completed: parent.modelData.completed; description: qsTr("Toggle subtask"); motion: root.controller.motion; onClicked: root.subtask("subtask-toggle", parent.modelData.id) }
                     InputField { Layout.fillWidth: true; text: parent.modelData.title; onEditingFinished: root.subtask("subtask-edit", parent.modelData.id, text) }
                     ActionButton { symbol: "close"; description: qsTr("Remove subtask"); motion: root.controller.motion; onClicked: root.subtask("subtask-delete", parent.modelData.id) }
                 }
