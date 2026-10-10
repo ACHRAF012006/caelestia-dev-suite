@@ -92,3 +92,23 @@ proper owned-data recovery design, not generalized scripts. No production instal
 shell restart, global Git setting, force push or destructive live test is allowed.
 Implemented/deferred outcomes are recorded in the release documentation; this
 table records the pre-change evidence, not a claim that every finding is fixed.
+
+## Follow-up findings and disposition
+
+Later transport inspection found that old directory read_text normalized CRLF,
+while Git blobs did not. New directory reads preserve original bytes for resource
+checksums. Existing text-map hash algorithms remain unchanged; a legacy CRLF source
+can display a byte-level update after upgrade. Installed code is never replaced
+silently. This is a Low transport consistency issue, now explicitly documented.
+
+EVOLUTION_0_8 is the implemented/deferred ledger for every requested phase. A01–A04,
+A07–A09, A11–A14, A19–A22 and A31–A32 received direct fixes or strengthened boundaries.
+A05/A06/A10/A18/A23–A25 received incremental changes, with remaining synchronous,
+scaling and responsibility limits documented. A15–A17 and A26–A30 remain partly or
+fully deferred; safer declarations/designs do not claim execution or compatibility.
+
+A33 (Medium, found during foundation verification): retaining completed job results
+and parent-owned closed operation dialogs could retain entire binary catalogues
+after repeated refresh/import. The pool now retains only active jobs; callers own
+completed results and closed operation dialogs are deleted through Qt. A weakref
+regression checks release of an 8 MiB result while the pool remains alive.

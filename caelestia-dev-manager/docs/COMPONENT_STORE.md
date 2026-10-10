@@ -71,7 +71,7 @@ process crash, close the manager, inspect metadata, preserve any current source,
 and restore the retained directory to the metadata's original source destination.
 Then reopen the manager and validate. Installed runtimes remain independent.
 
-Git must be installed by the user. The manager never installs system tools. Only
+Git must be installed by the user. Store discovery never installs system tools. Only
 HTTPS GitHub URLs without embedded credentials are accepted. Private repositories
 need an already configured Git credential helper or an authenticated GitHub CLI.
 The CLI helper is selected per Git command, without global Git changes; checks do not open interactive
@@ -81,17 +81,17 @@ disable only repository checking.
 
 ## Publishing components
 
-Add `components/<id>/` containing its schema-1 manifest, README, Python/QML/shell
+Add `components/<id>/` containing its schema-1 or schema-2 manifest, README, Python/QML/shell
 source and SVG assets. Keep dependencies, permissions, semantic version, relative
 paths and existing lifecycle rules. Commit and push to the configured branch.
 The next startup/manual check discovers the new component or source update.
 Do not commit environments, credentials, user configuration, logs, backups or
-binary payloads. No installer hooks, symlinks or submodules are allowed in a store
+undeclared binary payloads. No installer hooks, symlinks or submodules are allowed in a store
 component. Git fetches are bare, with hooks and unsafe transports disabled; source
-is read as UTF-8 blobs and Python is parsed, never imported for discovery.
+is read as inert text/declared binary blobs and Python is parsed, never imported for discovery.
 
-Limits are 128 catalogue components, 500 files and 8 MiB of text per component,
-and 64 MiB of total catalogue text. Invalid components are skipped with a reason.
+Limits are 128 catalogue components, 500 files and 8 MiB of payload per component,
+and 64 MiB of total catalogue payload. Invalid components are skipped with a reason.
 The store does not update the manager itself. Use its GitHub bootstrap installer
 or rerun `install.sh` from reviewed manager source to update the manager.
 
@@ -109,3 +109,24 @@ checks the actual host release/files and shared page-ID uniqueness. A valid
 Store entry is not proof that a client host is compatible. Publishing never
 installs the component or reloads production. See
 [DASHBOARD_INTEGRATION.md](DASHBOARD_INTEGRATION.md).
+
+## Release policies (manager 0.8)
+
+Every UI session starts Stable (main). Explicit Beta (beta) and Development
+(development) selection uses separate commit-pinned caches. Branches are optional;
+an absent branch is an error, never an automatic fallback or compatibility claim.
+Cached catalogue loading/fetch use the shared bounded scheduler; older generation
+results cannot replace the selected channel. Git blob reads are batched. Schema-2
+binary files require exact resource declarations; cached base64 transport is
+revalidated and aggregate catalogue limits still apply.
+
+The selected component's policy supports Update normally (Stable), Pin installed
+version, Pin selected channel and Ignore updates. Pins apply to source downloads,
+not local reviewed development installs. A version pin preserves the installed
+snapshot even if upstream rewrites the same version; historical release selection
+is not implemented. Policies persist through installed backup restore. Fresh
+backend download plans enforce policy as well as source hashes and registry state.
+Channel, available/installed versions and compatibility indication are visible;
+actual installation still verifies the host. Selecting a channel or changing a
+policy never silently changes installed files. Existing credentials, exact commit
+provenance, local-edit protection and source backups are preserved.

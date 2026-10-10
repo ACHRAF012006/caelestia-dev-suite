@@ -1,5 +1,9 @@
 # Verified automatic Cast Audio Quick Toggles adapter
 
+Manager 0.8 routes this existing adapter through the trusted CapabilityRegistry
+and central compatibility matrix. Receipt formats and native runtime behavior
+remain unchanged. See [ADAPTER_API](ADAPTER_API.md) and [RECOVERY_MODEL](RECOVERY_MODEL.md).
+
 Manager 0.4 introduced the scoped automatic Cast Audio host integration: component ID `cast-audio`, type `caelestia-plugin`, runtime `quickshell`, integration target `caelestia-quick-toggles`. This is a manager-owned adapter, not a public Caelestia registration API or permission for component-supplied patches.
 
 It supports verified Caelestia KDE commit `e34b6957fad5ce9395841b65be9e3df180ccd65c`. Only `modules/utilities/cards/Toggles.qml` and `modules/nexus/pages/utilities/QuickTogglesPage.qml` beneath the detected shell root can change. Pristine input must match pinned checksums; the exact previous Cast 0.1.1 icon layout is recognized for migration. Other content blocks installation.
@@ -17,3 +21,9 @@ General shell plugins retain explicit enable/reload behavior. The adapter does n
 Tests use pinned GPL-3.0-only host fixtures under temporary XDG roots, cover install/update/disable/uninstall/restore and failure recovery, and never patch production as a test. Authorized desktop deployment is a separate lifecycle operation.
 
 Manager 0.6.0 adds an independent [Timer dashboard adapter](ANIMATED_TIMER_INTEGRATION.md). It never reuses Cast Audio host files, transforms or receipts. Cast lifecycle behavior remains unchanged.
+
+Cast's compatibility rule recognizes the exact reviewed signature on an unmarked
+host; declared unknown version/commit markers fail. Existing legacy icon hashes
+remain a reviewed migration input. Check/apply/recovery re-derive the fixed
+transformation and receipt; arbitrary supplied AFTER source is rejected. Host
+receipt deletion and replacement participate in directory durability checks.

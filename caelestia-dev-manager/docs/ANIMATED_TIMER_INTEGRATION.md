@@ -1,5 +1,9 @@
 # Animated Timer integration (manager 0.6.0)
 
+Manager 0.8 routes this existing adapter through the trusted CapabilityRegistry
+and central compatibility matrix. Receipt formats and native runtime behavior
+remain unchanged. See [ADAPTER_API](ADAPTER_API.md) and [RECOVERY_MODEL](RECOVERY_MODEL.md).
+
 The `animated-timer` Quickshell component declares `caelestia-dashboard-timer`.
 This is a dedicated manager-owned adapter, not an upstream dashboard API. Install
 manager 0.6.0 source before installing this component; the Component Store does

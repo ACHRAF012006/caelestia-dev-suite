@@ -5,14 +5,15 @@ it cannot make these and systemd a single atomic transaction. Operations take an
 advisory cross-process lock. Sequence: fresh plan/ownership checks → full touched
 snapshot → synced backup metadata → synced journal → atomic file changes → adapter
 changes → SQLite record/ownership/history commit → durable journal removal.
-Atomic file replacement syncs its parent directory. Journal v2 records intended
+Atomic file replacement syncs data/mode and its parent directory; newly created directories and host-receipt deletions also sync their parents. Journal v2 records intended
 payload hashes/modes as well as the old backup. Closing the manager never removes
 components or stops their independent runtimes.
 
 On startup a journal blocks mutations; read-only inspection remains available.
 Explicit Settings recovery finalizes an operation whose ID is already committed,
 or preflights ALL backup blobs and payload paths before rollback. Current payloads
-must match either the saved before state or journal after state. Third-party edits,
+must match either the saved before state or journal after state. A missing old file
+is accepted only when the journal proves an intended removal. Third-party edits,
 symlinks, foreign ownership, missing/corrupt blobs or invalid receipts retain the
 journal and fail closed for manual reconciliation. Legacy journals lacking after
 state can recover unchanged files; ambiguous changed files require reconciliation.

@@ -1,10 +1,10 @@
-# Component manifest, schema 1
+# Component manifests, schemas 1 and 2
 
 Every component has `manifest.json` at source root. JSON duplicate/unknown keys are errors.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "my-utility",
   "name": "My Utility",
   "version": "0.1.0",
@@ -23,7 +23,7 @@ The optional icon must actually exist. Declare a distinct static `desktop.icon` 
 
 | Field | Meaning |
 | --- | --- |
-| schema_version | Optional integer 1 |
+| schema_version | Integer 1 or 2; omission means 1. New templates emit 2. Pure migration normalizes in memory; original source remains. |
 | id | Required lowercase letters/digits separated by single hyphens, starts with a letter, max 64; manager/system command IDs reserved |
 | name | Required single-line display name, max 120 |
 | version | Required `major.minor.patch`, optional prerelease/build suffix |
@@ -34,12 +34,15 @@ The optional icon must actually exist. Declare a distinct static `desktop.icon` 
 | args | Optional array of literal command arguments; no shell interpolation |
 | dependencies.system | Executable names checked on PATH. Fixed Cast Audio recipes can prepare ffmpeg/pactl/parec after review; other missing tools need explicit setup. |
 | dependencies.python | Package names with optional simple version comparator; no URLs, flags or hooks |
-| desktop | Optional terminal boolean, semicolon-separated categories, safe source-relative SVG icon, createShortcut boolean, startupNotify boolean |
+| desktop | Optional terminal boolean, semicolon-separated categories, safe source-relative static SVG or declared image icon, createShortcut boolean, startupNotify boolean |
 | service.restart | no, on-failure, always; defaults to no |
 | compatibility.plasma | Optional installed Plasma version prefix |
 | compatibility.caelestia_commit | Optional exact installed commit |
 | compatibility.manager_min_version | Optional minimum manager `major.minor.patch` |
 | integration.target | qml-component requires caelestia-plugin; Cast Audio may declare caelestia-quick-toggles; Animated Timer retains caelestia-dashboard-timer; compatible Quickshell plugins may declare caelestia-dashboard in manager 0.7.0 |
+| resources | Schema 2 only: filename → exact sha256/MIME descriptor for inert binary resources |
+| portable_data | Schema 2 only: root/path declarations restricted to children of XDG data/config/state caelestia-components/ID; no execution/export authority |
+| compatibility.python | Optional packaging Python version specifier checked before private preparation |
 | permissions | Descriptive string list shown during review; this is disclosure, not a security sandbox |
 
 Python/PySide6, standalone QML (`qml6`) and shell runtimes work for apps/commands/services. Caelestia integration requires quickshell. `python-pyside6` must declare a PySide6 Python dependency. `none` creates drafts. General KDE integration is reserved and cannot install in v0.1. Python dependencies support Python runtimes and Quickshell Python sidecars. Sidecars must explicitly use installed `_venv/bin/python`; launch module entrypoints instead of relocated console scripts.
@@ -70,7 +73,7 @@ The manager manifest and Caelestia's `metadata.json` are different formats. A Ca
 
 ID, name, description and version must match the manager manifest. `ui` must match its entrypoint (defaults to main.qml). The actual runtime loader uses `Qt.createComponent` and `createObject` under the shell PluginLoader. A plugin may provide Quickshell windows or objects using real shell imports. There is no assumed dashboard-tab API. Optional host author/icon/settings metadata is passed through as source; unsafe code remains the user's responsibility to review.
 
-Source supports UTF-8 text files and SVG; package import rejects traversal, absolute paths, hidden/cache paths, duplicates, file/directory conflicts and symlinks. `_venv` is manager-reserved. All source files are copied as inert text data; only generated launchers or service entries invoke the declared entrypoint. Executable bits on source scripts are unnecessary: the launcher calls the interpreter explicitly. Install scripts are never auto-executed. Destination overrides and arbitrary service/desktop Exec fields are not supported.
+Source supports UTF-8 text files/SVG and declared inert byte resources; package import rejects traversal, absolute paths, hidden/cache paths, duplicates, file/directory conflicts and symlinks. `_venv` is manager-reserved. All source files are copied as inert data; only generated launchers or service entries invoke the declared entrypoint. Executable bits on source scripts are unnecessary: the launcher calls the interpreter explicitly. Install scripts are never auto-executed. Destination overrides and arbitrary service/desktop Exec fields are not supported.
 
 The Cast Audio-only `caelestia-quick-toggles` adapter requires manager 0.4 or newer. Its reviewed install adds a separate expandable row, enables new installs and restarts the shell. See [Quick Toggles integration](QUICK_TOGGLES_INTEGRATION.md). Other plugins keep the explicit enable/reload workflow.
 
@@ -100,3 +103,29 @@ bridge and page URL. The page exposes `controller` (required var) and
 version; Notes & Tasks declares 0.7.0. The old Timer target remains supported.
 Read [the shared integration contract](DASHBOARD_INTEGRATION.md) before writing a
 new dashboard component. Own user data separately in a namespaced XDG location.
+
+## Versioned resources and review
+
+Schema 2 resources example:
+
+```json
+"resources": {
+  "assets/picture.png": {"sha256": "<64 lowercase hex characters>", "mime": "image/png"}
+}
+```
+
+Replace the checksum with the actual SHA-256. Binary files require declarations;
+known image/audio/font MIME, extension and magic must agree. Arbitrary declared
+inert files are allowed but never imported/executed as manager code. Bounds are
+500 source files, 8 MiB/file, 16 MiB/source and 512 KiB/manifest. Text/code stays
+UTF-8 without NUL. Raster icons use normal desktop launchers; manager preview shows
+metadata/fallback identity rather than decoding untrusted resources. Use folder or
+.cdmpkg import for bytes; paste remains text. See MANIFEST_VERSIONING and
+PACKAGE_ARCHIVES. Manager 0.8.0 is required for schema 2.
+
+Permissions review derives exact file/environment/unit/shortcut/host actions from
+validated plans. Component permissions remain runtime disclosures, not a sandbox.
+Declare compatibility.python such as ">=3.11,<3.15" when appropriate. Update review
+shows dependency changes. portable_data is only a validated declaration; personal
+backup export/restore and data migration execution are not implemented. Unknown
+migration/hook fields fail strictly; see DATA_EVOLUTION.

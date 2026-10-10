@@ -25,7 +25,7 @@ The installed launcher dispatches to backend.cli; no command opens the normal GU
 backend.jobs owns queued/running/succeeded/failed/cancelled states, generation IDs,
 structured redacted errors and bounded in-memory progress logs. A shared pool runs
 at most two jobs, with a bounded queue. app.jobs delivers results/progress to Qt.
-Existing Store/Inspection APIs are retained as bridges over that scheduler.
+Existing Store cache/fetch and Inspection APIs are retained as bridges over that scheduler.
 Inspection still freezes inventory on the main thread and drops obsolete results.
 Reviewed slow operations use their own Manager/SQLite connection created and closed
 in the worker, never the UI connection. Dependency cancellation is checked between

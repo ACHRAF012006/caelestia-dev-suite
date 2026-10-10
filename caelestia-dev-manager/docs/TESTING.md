@@ -54,6 +54,26 @@ the historical confirmation preference enabled. It also exercises keyboard
 capture/editing, filters, fonts, reduced motion, large models and a second shell
 process loading the same v1 data. See the component's TESTING.md for requirements.
 
+## Manager 0.8 regression coverage
+
+The new modules extend existing lifecycle/fake-host fixtures rather than using live
+Caelestia destinations. `test_foundations` covers deterministic manifest migration,
+invalid/future schemas, malformed field types, legacy/newer/corrupt database
+upgrades and transactional DDL failure, forged adapter output, interrupted payload
+edits/deletions, special/corrupted backup blobs and future journal refusal.
+`test_archives` covers inert binary round trips and installation/restore, traversal,
+links/special modes, checksums, MIME signatures, limits and binary Store caches.
+`test_jobs_diagnostics` covers bounded concurrency, queued cancellation, mutation
+cancellation refusal, redacted errors, worker-owned SQLite, Qt responsiveness,
+read-only CLI/diagnostics, rotating logs and release of completed catalogue/dialog
+payloads. `test_evolution` covers release
+channels, pins/ignored updates, policy/provenance restore, stale generations,
+private pip cache/fingerprints/Python constraints, launch identity/pidfd races,
+changed launchers/symlink entrypoints, actual authority reviews, search and templates.
+Data migration execution/portable personal-data restore are not implemented; tests
+verify their narrow declarations and rejection of executable hooks. Tests do not
+claim fork/re-exec supervision, general host releases or native/hardware acceptance.
+
 ## Desktop acceptance
 
 The explicit acceptance helper performs live **harmless unique dummy** app/service checks. It never installs or modifies a Caelestia plugin and never restarts the production shell.
@@ -88,6 +108,19 @@ The first prepares real binary-wheel Python dependencies in an isolated environm
 The shortcut helper uses native clipboard paste/import and installation dialogs with **temporary source, XDG and desktop directories only**. It closes the manager window, launches the generated executable desktop file through real KDE KIO, checks the independent application's output, reopens the manager to verify shortcut recognition, then uninstalls while preserving source and an unrelated desktop file. It does not add a shortcut to the real KDE desktop or alter Plasma folder settings. Rebuild the catalogue probe from the current source first; its `--file` mode validates launching a specific desktop entry outside the application catalogue.
 
 ## Results on this machine
+
+Manager 0.8.0 (2026-10-10): **338 automated tests passed** in both the working
+source and the scoped suite publishing checkout (0 failures, 0 skips). Wheel and
+source distribution builds succeeded. Baseline was 272 tests; added regressions
+cover the contracts listed above. Offscreen Components/Diagnostics previews retain
+the existing restrained styling. Python 3.14.7 and PySide6/Qt 6.11.2 were used.
+Read-only detection reports CachyOS, Plasma 6.7.5, Wayland and the reviewed Caelestia
+KDE v2.5.1 commit; this release does not claim renewed native/hardware acceptance.
+No production installation, component update, registry migration, shell restart or
+destructive live test occurred. Unrelated local Animated Timer development changes
+were preserved and excluded from manager publication. The build artifacts contain
+the new backend modules; the source distribution includes the new contract docs.
+
 
 Manager 0.3.2 (2026-10-07): **175 automated tests passed**; wheel and source
 distribution include the bundled SVG. Offscreen previews checked the logo and

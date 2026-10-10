@@ -50,3 +50,13 @@ isolated XDG roots. Run the copied-shell dashboard QML probe. Publish complete
 `components/<id>/` and changed manager source in `caelestia-dev-manager/`, validate
 the exact tree, push scoped changes and verify a fresh main Store scan. Production
 installation and reload stay separate from publishing.
+
+Manager 0.8 adds read-first schema/adapter/recovery/archive/diagnostics documents.
+Prefer static SVG identity artwork; binary resources require schema-2 sha256/MIME
+entries and .cdmpkg/folder transport, not a fabricated text paste. Existing schema-1
+components remain readable and should not be rewritten merely for style. Review
+actual plan authority and dependency diffs. New private environments use interpreter
+fingerprints/cache; legacy prepared environments may need reviewed recreation.
+Do not add executable data migrations or portable personal-data restores: their
+owned-data journal API is deferred in DATA_EVOLUTION. Use read-only doctor/status
+for troubleshooting; no generic repair-all or dangerous CLI install is provided.

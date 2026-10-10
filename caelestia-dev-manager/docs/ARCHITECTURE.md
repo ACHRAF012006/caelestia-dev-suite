@@ -2,11 +2,11 @@
 
 ## Boundaries
 
-Qt Widgets (`app/main.py`) presents Dashboard, Components, Create / Import, Codex Context, Backups, Logs, Settings and Component Store. Source editing uses the user's external editor via Open Source; there is no Code page. `app/review.py` shows plain-language installation/restore summaries with exact technical plans on demand. The UI calls `backend.manager.Manager`; component source never becomes a manager page or is imported into the manager interpreter.
+Qt Widgets (`app/main.py`) presents Dashboard, Components, Create / Import, Codex Context, Backups, Logs, Settings, Component Store, Diagnostics and Operation History. Source editing uses the user's external editor via Open Source; there is no Code page. `app/review.py` shows plain-language installation/restore summaries with exact technical plans on demand. The UI calls `backend.manager.Manager`; component source never becomes a manager page or is imported into the manager interpreter.
 
 The registry is `$XDG_STATE_HOME/caelestia-dev-manager/registry.sqlite3` with component records, a uniquely indexed absolute-path ownership table, and lifecycle events. Records preserve source and installed manifests separately, installed version, source fingerprint, destination, enabled state, timestamps, last operation ID, reload requirement, source deletion history, optional approved desktop-shortcut descriptor and installed shortcut preference. Runtime status also reports shortcut existence, missing/changed files, source availability, service state and best-effort PIDs.
 
-Navigation reuses the current display snapshot instead of repeating environment commands, source validation, installed-file hashes and backup checks for every tab. `app/inspection.py` captures registry records/ownership receipts on the main thread into a read-only inventory, then inspects files, dependencies and runtime state in a worker with its own Runtime. No SQLite connection crosses threads and no component source is executed. Startup and manual Refresh use this worker; navigation requests a background refresh when the snapshot is older than 30 seconds. Repeated requests coalesce, failures retain the prior display, and generations reject results from before a reviewed mutation. Immediate post-mutation refresh remains synchronous. Cancel between files/components and wait for workers to finish when closing; never terminate a thread mid-read.
+Navigation reuses the current display snapshot instead of repeating environment commands, source validation, installed-file hashes and backup checks for every tab. `app/inspection.py` captures registry records/ownership receipts on the main thread into a read-only inventory, then inspects files, dependencies and runtime state in a worker with its own Runtime. No SQLite connection crosses threads and no component source is executed. Startup and manual Refresh use this worker; navigation requests a background refresh when the snapshot is older than 30 seconds. Repeated requests coalesce, failures retain the prior display, and generations reject results from before a reviewed mutation. Production post-mutation refresh is asynchronous; sandbox tests may request immediate snapshots. Cancel between files/components and wait for workers to finish when closing; never terminate a thread mid-read.
 
 `Backups.catalog` reads compact display metadata without opening backup blobs. Its records supply labels and previous-version availability only; `read`, `plan_restore` and `restore` still validate every checksum and owned path before applying changes. Component selection, store cards and Codex Context reuse snapshot diagnostics/fingerprints. Display data never substitutes for fresh lifecycle plans or dependency preparation checks.
 
@@ -14,7 +14,7 @@ Navigation reuses the current display snapshot instead of repeating environment 
 
 `app/branding.py` loads the bundled `app/assets/icon.svg` directly, with literal colors rather than symbolic theme colors. Package data includes the asset in wheels and source archives. The manager installer copies the same SVG into its owned manager root, records it in the separate manager receipt and uses its absolute path in the desktop entry. Updates preserve component files; uninstall removes only the recorded logo and other owned manager files. Components' declared SVGs likewise use absolute installed paths in both canonical desktop entries and optional desktop copies.
 
-Source snapshots are UTF-8 file maps under `<development-repository>/plugins/<id>/`. Installed snapshots are at fixed user destinations. Fingerprints include content and filenames, so added, removed or changed source yields Update Available even if the version number was not changed.
+Source snapshots are bounded UTF-8/declared inert byte file maps under `<development-repository>/plugins/<id>/`. Installed snapshots are at fixed user destinations. Fingerprints include content and filenames, so added, removed or changed source yields Update Available even if the version number was not changed.
 
 ## Adapters and capabilities
 
@@ -41,9 +41,9 @@ Reviewed preparation captures subprocess stdout/stderr for environment creation 
 
 ## File operations
 
-`backend/store.py` reads a configured HTTPS GitHub repository's `components/<id>/` tree at an immutable fetched commit. A bare cache under XDG data avoids checkouts, executable filters and component hooks. Symlink/submodule modes, unsafe paths, binary payloads, reserved dependency directories, mismatching manifests and oversized catalogues are rejected. `app/store.py` runs cancellable Git checks on a worker thread; SQLite and UI changes stay in the main thread. The startup scan can be disabled and is skipped in sandbox mode. Failed checks keep the last validated catalogue.
+`backend/store.py` reads a configured HTTPS GitHub repository's `components/<id>/` tree at an immutable fetched commit. A bare cache under XDG data avoids checkouts, executable filters and component hooks. Symlink/submodule modes, unsafe paths, undeclared binary payloads, reserved dependency directories, mismatching manifests and oversized catalogues are rejected. `app/store.py` runs cancellable Git checks on a worker thread; Store checks use no SQLite; UI results return to the main thread and lifecycle workers create their own connections. The startup scan can be disabled and is skipped in sandbox mode. Failed checks keep the last validated catalogue.
 
-The store UI uses the built-in suite repository and main branch; no repository fields are shown. One primary button chooses Install, Update or Open based on the installed fingerprint and launch capability. Install/Update downloads inert source, then continues into the existing dependency and installation reviews. Store source download plans seal the previous source hash and registry record. Existing local IDs can be linked only if their file contents match the repository. Subsequent store updates refuse modified local source. A download stages inert files, retains the entire previous source directory in XDG data `source-backups/<uuid>/<id>/`, then swaps the source directory and records repository/commit/hash provenance. Errors restore the previous directory; a process crash during the source swap can require restoring the retained source directory manually. These source backups are distinct from installed-payload backups. No download prepares dependencies, modifies ownership receipts or installs code. Cancelling installation can leave downloaded development source, while installed files remain unchanged.
+The store UI uses the built-in suite repository and Stable/main by default; optional Beta/Development channels are explicit and no repository fields are shown. One primary button chooses Install, Update or Open based on the installed fingerprint and launch capability. Install/Update downloads inert source, then continues into the existing dependency and installation reviews. Store source download plans seal the previous source hash and registry record. Existing local IDs can be linked only if their file contents match the repository. Subsequent store updates refuse modified local source. A download stages inert files, retains the entire previous source directory in XDG data `source-backups/<uuid>/<id>/`, then swaps the source directory and records repository/commit/hash provenance. Errors restore the previous directory; a process crash during the source swap can require restoring the retained source directory manually. These source backups are distinct from installed-payload backups. No download prepares dependencies, modifies ownership receipts or installs code. Cancelling installation can leave downloaded development source, while installed files remain unchanged.
 
 Previous version selects the newest installed backup with a differing installed version or source fingerprint. Same-payload manual, shortcut and enablement snapshots are skipped. It uses the existing reviewed restore transaction, preserving current development source and its store provenance. A fresh pre-restore backup supports undo through Backups. Runtime user configuration outside owned payloads is preserved; service restart remains explicit.
 
@@ -61,11 +61,11 @@ The installed loader contract is inspected before planning plugin installs. A ne
 
 ## Extending the platform
 
-Add manifest fields with strict validation, a target-specific adapter, supported capabilities and isolated safety tests. Document the verified host discovery/activation contract before supporting a new runtime. General KWin or Plasma widgets should use official KDE mechanisms in their own adapter. Dashboard tabs require an upstream hook or reviewed host changes; manager 0.6.0 implements only the fixed Timer-specific adapter.
+Add manifest fields with strict validation, a target-specific adapter, supported capabilities and isolated safety tests. Document the verified host discovery/activation contract before supporting a new runtime. General KWin or Plasma widgets should use official KDE mechanisms in their own adapter. Dashboard tabs use the existing shared reviewed dashboard capability, preserving the legacy Timer-only adapter.
 
 ## Manager-owned Quick Toggles integration (0.4)
 
-`backend/host_integration.py` implements the fixed Cast Audio-only adapter. Host plans are sealed independently of payload FilePlans and stored in the same durable transaction intent. Private receipts retain verified originals and installed hashes. Generic component destinations are unchanged. See [adapter contract](QUICK_TOGGLES_INTEGRATION.md) for automatic enable/restart, edit protection and recovery.
+`backend/quick_toggle_integration.py` implements the fixed Cast Audio adapter; `host_integration.py` is the registry facade. Host plans are sealed independently of payload FilePlans and stored in the same durable transaction intent. Private receipts retain verified originals and installed hashes. Generic component destinations are unchanged. See [adapter contract](QUICK_TOGGLES_INTEGRATION.md) for automatic enable/restart, edit protection and recovery.
 
 ## Cast Audio machine preparation and Quickshell sidecars (0.5)
 
@@ -125,3 +125,29 @@ recalculate only the changed record; query/view changes rebuild the counters.
 TaskCheck supplies one fixed-size centered completion control to rows, editors
 and subtasks. The settings panel is removed and deletion is immediate; retained
 legacy preferences remain compatible without a storage migration.
+
+## Version 0.8 foundations
+
+See MANIFEST_VERSIONING, DATABASE_MIGRATIONS, ADAPTER_API, PACKAGE_ARCHIVES,
+RECOVERY_MODEL and DIAGNOSTICS. Pure schema/resource/archive/policy/review/job APIs
+remain Qt-independent. The capability registry selects existing type installers
+and reviewed host modules; the compatibility matrix owns release/signature rules.
+Each adapter re-derives its trusted output/receipts before mutation/recovery. The
+coordinator still owns exact payload ownership, backups and journal transactions.
+Journal v2 preflights before/after file states and refuses crash-time edits.
+File data/modes, directory creation/rename and journal/host receipt removal are
+synced. Restore revalidates saved source and current compatibility.
+
+The shared job pool bounds read/preparation/mutation concurrency. Workers never use
+the UI Registry; reviewed backend operations create/close a worker connection.
+Progress uses Qt signals; active mutations complete before close. Source cache
+loading and Git fetch are background jobs. Store blob reads are batched per
+component rather than per file. Dependency display reads only the manifest, not
+all binary assets again. Display snapshots remain advisory.
+
+Text-map fingerprints retain the old JSON algorithm; byte values use SHA-256 in
+that map. Directory reads now preserve original newline bytes for resource hashes;
+legacy CRLF projects may show byte-level source differences after upgrade. No
+installed runtime is replaced without review. Independent app/service/shell
+lifetimes remain unchanged. Portable personal-data execution and data migrations
+are deferred until separate owned-data journals exist (DATA_EVOLUTION).

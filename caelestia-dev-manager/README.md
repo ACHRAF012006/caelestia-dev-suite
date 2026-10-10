@@ -6,6 +6,12 @@ The manager creates, imports, validates, installs, enables, disables, updates, b
 
 Tabs switch using the information already loaded, with a short fade and a sliding selection highlight. Startup and **Refresh** check component information in the background; navigating after 30 seconds requests a fresh check without blocking the page switch. Settings → **Animate tab transitions** turns both animations off. Installation and restore still perform fresh ownership and checksum checks.
 
+Manager 0.8.0 adds versioned manifest/database migrations, a central trusted adapter
+and host-compatibility registry, bounded background jobs, Diagnostics and Operation
+History, portable `.cdmpkg` source packages, declared binary resources, Store channel
+and pin policies, dependency fingerprints/cache and stronger recovery/process checks.
+See [the audit](docs/FUTURE_PROOF_AUDIT.md) and [release scope](docs/EVOLUTION_0_8.md).
+
 ## Install and launch
 
 Need the Caelestia desktop first? Follow [Install Caelestia on KDE Plasma](docs/CAELESTIA_KDE_SETUP.md), based on the upstream ladybug-me/caelestia-kde repository, then return here to install Dev Manager.
@@ -89,7 +95,23 @@ The automated suite uses temporary paths. The separate desktop acceptance helper
 
 ## Current limits
 
-Version 0.5 handles UTF-8 text packages, including SVG assets. Raster/binary package assets, archive import, compiled application build pipelines, KWin/Plasma package adapters and arbitrary QML module destinations are not implemented. Python/QML/shell applications, commands, Python/shell services and verified Caelestia Quickshell plugins are supported. Static validation checks Python syntax and metadata; it cannot prove code safety or guarantee QML imports compile. Python dependency preparation runs as a separately reviewed synchronous operation and can temporarily block the UI. App PID detection is best effort through `/proc`; applications that replace themselves or fork away from installed paths may not be detected.
+Source supports UTF-8 and schema-2 declared inert binary resources. **Import Package**
+inspects a bounded `.cdmpkg` archive, then reviews development source; **Export
+Package** transfers source/resources only. Installation remains a separate review.
+[Archive format](docs/PACKAGE_ARCHIVES.md), [manifest versions](docs/MANIFEST_VERSIONING.md),
+[recovery](docs/RECOVERY_MODEL.md) and [read-only CLI/diagnostics](docs/DIAGNOSTICS.md)
+describe the implemented boundaries. Components supports search/filter and Ctrl+F.
+
+The Store starts with Stable; Beta and Development require explicit selection and
+an available branch. Pins/ignored updates protect the installed snapshot. No runtime
+is silently updated. Reviewed dependency preparation and slow installation/restore
+work run on background jobs with private SQLite connections. Cancellation waits for
+a safe stage; mutations finish before closing. Runtime health can remain unknown for
+fork/re-exec applications and shell plugins. Static checks do not prove code safety
+or arbitrary QML compilation. General KWin/Plasma adapters, compiled build pipelines,
+historical Store release indexing, portable personal-data backups and executable
+data migrations remain deferred. [Scope and remaining limits](docs/EVOLUTION_0_8.md)
+separate implemented behavior from future design.
 
 Start future work with [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md). Notes & Tasks is an independent dashboard component. Animated Timer source is bundled for the dedicated adapter tests; published components remain independent runtimes.
 

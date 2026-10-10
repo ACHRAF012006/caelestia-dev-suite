@@ -1,6 +1,6 @@
 # Project context
 
-Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.7.0. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
+Project: **Caelestia Dev Manager**, command `caelestia-dev-manager`, version 0.8.0. Native Python/PySide6 Qt Widgets desktop application. Target: CachyOS/Arch, Plasma 6, Wayland, ladybug-me/caelestia-kde.
 
 Read README.md, docs/ARCHITECTURE.md, docs/PLUGIN_SPEC.md (alias to COMPONENT_SPEC), docs/COMPONENT_SPEC.md, docs/CODEX_PACKAGE_FORMAT.md, docs/CODEX_WORKFLOW.md and docs/COMPONENT_STORE.md before changing component behavior.
 
@@ -16,7 +16,7 @@ Standalone applications and scripts may optionally declare `desktop.createShortc
 
 Verification: run the temporary-path automated tests and build. Run the explicitly documented desktop acceptance helper only for harmless dummy components. Never use live Caelestia as a destructive test target. Do not mutate global Git settings. Ignore virtualenvs, logs, backups, staging, reference clone and build output.
 
-Tab navigation reuses display snapshots. Startup, manual Refresh and stale-view checks use a cancellable read-only inspection worker; capture SQLite records/receipts on the main thread and never share its connection with a worker. Discard results from an older generation after a reviewed mutation. Backup lists read metadata without hashing blobs; restore/inspection still revalidate the complete backup. Display caches must never authorize installs/removals/restores: fresh sealed plans and ownership checks remain mandatory. Page fades last 140 ms; the navigation highlight slides for 180 ms behind transparent labels without blocking native mouse/keyboard input. Interrupt animation on rapid switches/resize/scroll/close; Settings disables both effects.
+Tab navigation reuses display snapshots. Startup, manual Refresh and stale-view checks use a cancellable read-only inspection job; capture SQLite records/receipts on the main thread and never share its connection with a worker. Discard results from an older generation after a reviewed mutation. Backup lists read metadata without hashing blobs; restore/inspection still revalidate the complete backup. Display caches must never authorize installs/removals/restores: fresh sealed plans and ownership checks remain mandatory. Page fades last 140 ms; the navigation highlight slides for 180 ms behind transparent labels without blocking native mouse/keyboard input. Interrupt animation on rapid switches/resize/scroll/close; Settings disables both effects.
 
 The manager uses `app/assets/icon.svg`, a bundled SVG with fixed colors, for its window icon and desktop launcher. The installer copies it to its owned manager root and records its checksum; the desktop Icon field uses that absolute installed path instead of a system theme name. SVG assets must be included in both wheel and source distributions. Component shortcuts already copy the declared original SVG's absolute installed path.
 
@@ -36,3 +36,27 @@ the request explicitly overrides it, verifies remote delivery, and reports real
 authentication/repository/branch blockers. Preserve unrelated work and never
 force-push or change global Git settings. Git publication remains separate from
 reviewed production installation and shell reload.
+
+Manager 0.8.0 foundations: read docs/FUTURE_PROOF_AUDIT.md, MANIFEST_VERSIONING.md,
+ADAPTER_API.md, RECOVERY_MODEL.md, DATABASE_MIGRATIONS.md, PACKAGE_ARCHIVES.md,
+DIAGNOSTICS.md and EVOLUTION_0_8.md. Schema spelling remains schema_version; 1/omitted
+migrates in memory to 2, original source bytes remain. Registry versions 0→1→2 use
+transactional migrations and online backups; newer schemas fail closed. A closed
+CapabilityRegistry owns types/host routes; no source-supplied adapter imports.
+Compatibility rules pin known releases/commits/signatures, never future versions.
+Binary resources require exact declarations, bounds/checksums and known MIME/magic
+agreement. Portable source archives stage and validate before source review, never
+extract into installation destinations. Portable-data declarations do not execute
+exports/migrations; DATA_EVOLUTION documents the deferred owned-data design.
+
+The shared backend JobManager bounds concurrency; Store cache/fetch and inventory
+use Qt bridges. Reviewed slow work creates/closes its own Registry in its worker.
+Production post-mutation refresh is asynchronous. Do not cancel inside file writes;
+preparation waits for safe stages. Read-only CLI uses SQLite mode=ro and creates no
+registry. Diagnostics never repairs automatically. Source/dependency/backup history
+and JSON manager logs are bounded and credentials redacted. Store defaults Stable,
+with explicit optional channels, installed version/channel pins and ignored updates.
+Retain exact Git commits and local-source edit protection. Dependency preparation
+uses a shared wheel cache plus private environment/interpreter fingerprints. Runtime
+uses launch records and pidfd identity rechecks; unknown ownership is never killed.
+Use exact fresh plans for restore and install; cached displays grant no authority.

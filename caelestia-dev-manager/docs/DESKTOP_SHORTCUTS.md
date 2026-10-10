@@ -35,3 +35,8 @@ Creation/removal participate in recoverable transactions and full installed-stat
 `Manager.create_desktop_shortcut(id, filename=None, expected=None)`, `remove_desktop_shortcut(id)` and `has_desktop_shortcut(id)` operate on installed components. Preview creation/removal with `plan_create_desktop_shortcut(id, filename=None)` and `plan_remove_desktop_shortcut(id)`. `plan_install` / `install` accept optional `create_shortcut` and reviewed `shortcut_filename` overrides. Desktop location/filenames are not arbitrary manifest destination overrides.
 
 See [testing](TESTING.md) for temporary-path unit/UI tests and a native KDE shortcut acceptance helper. Automated tests never create real desktop shortcuts.
+
+Manager 0.8 retains this ownership and lifecycle contract. Reviews include actual
+shortcut authority from the validated plan. Slow installation/restore work runs
+on private-connection jobs; no mutation is cancelled midway. Component packages
+transfer source/resources, never foreign absolute shortcut ownership receipts.

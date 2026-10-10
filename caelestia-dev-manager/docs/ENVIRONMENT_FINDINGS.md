@@ -55,3 +55,17 @@ still creates plugin objects without a dashboard registration API. Content's
 fixed native list and Wrapper's lazy loading/ScreenState were inspected again.
 Manager 0.7.0 adds a shared manager-owned bridge; see DASHBOARD_INTEGRATION.md.
 Production files and service were not changed during development.
+
+## Manager 0.8 read-only detection (2026-10-10)
+
+`backend.environment.detect(Paths.default())` reported CachyOS, Plasma 6.7.5,
+Wayland/KDE and active caelestia-shell.service. Release markers remain
+VERSION=v2.5.1 and e34b6957fad5ce9395841b65be9e3df180ccd65c; the existing plugin
+loader structural check succeeds. The test environment is Python 3.14.7, PySide6
+and Qt 6.11.2. No production Manager was initialized for this check: no registry
+migration/discovery, installation, service mutation or shell restart occurred.
+This is host detection, not renewed native/hardware acceptance. Automated adapter
+checks use copied fixtures for this release. Python >=3.11 / PySide6 >=6.8 remain
+declared requirements; other interpreter, Plasma, distro and Caelestia releases
+were not newly verified. Arch/CachyOS and Debian/Ubuntu machine-setup mappings
+remain reviewed fixed recipes; mocks do not establish native distro compatibility.
