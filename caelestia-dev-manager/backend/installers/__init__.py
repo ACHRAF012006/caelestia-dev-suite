@@ -98,13 +98,17 @@ class UserServiceInstaller(BaseInstaller):
     capabilities = BaseInstaller.capabilities | {"enable", "disable", "launch", "stop", "restart", "logs"}
     def plan_install(self, m, files, dependencies=None):
         result = super().plan_install(m, files, dependencies)
+        unit = self.unit(m)
+        result.append(FilePlan(self.paths.config / "systemd/user" / ("cdm-" + m["id"] + ".service"), unit).seal())
+        return result
+
+    def unit(self, m):
         unit = ("[Unit]\n" + f"Description={m['name'].replace('%', '%%')}\n\n[Service]\nType=simple\n" +
                 "WorkingDirectory=" + str(self.paths.root(m)).replace("%", "%%") + "\n" +
                 "ExecStart=" + " ".join(unit_quote(x) for x in self.command(m)) + "\n" +
                 "Restart=" + m.get("service", {}).get("restart", "no") + "\nRestartSec=3\n" +
                 "NoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n")
-        result.append(FilePlan(self.paths.config / "systemd/user" / ("cdm-" + m["id"] + ".service"), unit.encode()).seal())
-        return result
+        return unit.encode()
 
 class CaelestiaPluginInstaller(BaseInstaller):
     capabilities = BaseInstaller.capabilities | {"enable", "disable", "logs"}

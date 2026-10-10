@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from backend.paths import SafetyError, atomic_write, digest, no_symlinks
+from backend.paths import SafetyError, atomic_write, digest, no_symlinks, durable_unlink
 
 TARGET = "caelestia-quick-toggles"
 from backend.compatibility import CAST_FILES as FILES, require_release
@@ -175,7 +175,7 @@ def apply(paths, proposal):
     path = receipt_path(paths)
     if proposal["receipt_after"] is None:
         if path.exists():
-            path.unlink()
+            durable_unlink(path)
     else:
         atomic_write(path, json.dumps(proposal["receipt_after"], indent=2).encode(), 0o600)
 
@@ -198,6 +198,6 @@ def recover(paths, proposal):
     path = receipt_path(paths)
     if proposal["receipt_before"] is None:
         if path.exists():
-            path.unlink()
+            durable_unlink(path)
     else:
         atomic_write(path, proposal["receipt_before"].encode(), 0o600)

@@ -2,6 +2,9 @@
 import json
 import re
 import shutil
+import sys
+import platform
+from pathlib import Path
 from email.parser import Parser
 
 from packaging.requirements import InvalidRequirement, Requirement
@@ -18,9 +21,24 @@ def clean_output(value):
     # pip may print authenticated index URLs. Never persist their credentials or query tokens.
     value = re.sub(r"https?://[^\s<>'\"]+", "[redacted URL]", value)
     value = re.sub(r"(?i)\b(password|token|api[_-]?key)=\S+", r"\1=[redacted]", value)
-    value = re.sub(r"(?i)(authorization:\s*bearer\s+|bearer\s+)[^\s]+", r"\1[redacted]", value)
+    value = re.sub(r"(?i)(authorization:\s*(?:bearer|basic)\s+|bearer\s+)[^\s]+", r"\1[redacted]", value)
     value = re.sub(r"(?i)\b(password|token|api[_-]?key)\s*:\s*[^\s,]+", r"\1: [redacted]", value)
     return value[-16000:].strip()
+
+
+def fingerprint():
+    from backend.paths import digest
+    executable = Path(sys.executable).resolve()
+    return {'python': platform.python_version(), 'implementation': sys.implementation.cache_tag,
+            'platform': sys.platform, 'machine': platform.machine(),
+            'interpreter_sha256': digest(no_symlinks(executable).read_bytes())}
+
+
+def dependency_diff(previous, current):
+    old = set(previous.get('dependencies', {}).get('python', []))
+    new = set(current.get('dependencies', {}).get('python', []))
+    return {'added': sorted(new - old), 'removed': sorted(old - new), 'unchanged': sorted(old & new),
+            'python_compatibility': current.get('compatibility', {}).get('python')}
 
 
 def failure_report(manifest, stage, error):
@@ -101,10 +119,19 @@ def report(manifest, environment, marker=None, failure=None):
         versions = distributions(environment)
         prepared = marker is None
         if marker is not None:
-            prepared = no_symlinks(marker).is_file() and json.loads(marker.read_text()).get("dependencies") == deps.get("python", [])
+            prepared = False
+            if no_symlinks(marker).is_file():
+                receipt = json.loads(marker.read_text())
+                prepared = receipt.get('dependencies') == deps.get('python', []) and receipt.get('fingerprint') == fingerprint()
     except (OSError, ValueError, UnicodeError, AttributeError) as error:
         versions, prepared = {}, False
         inspection_error = clean_output(str(error))
+    runtime_version = python_version(environment)
+    requirement = manifest.get('compatibility', {}).get('python')
+    compatible_python = True
+    if requirement and deps.get('python'):
+        from packaging.specifiers import SpecifierSet
+        compatible_python = runtime_version != 'unknown' and SpecifierSet(requirement).contains(runtime_version)
     packages = []
     for requirement in deps.get("python", []):
         try:
@@ -130,6 +157,6 @@ def report(manifest, environment, marker=None, failure=None):
                 error = candidate
         except (OSError, ValueError):
             pass
-    ready = not inspection_error and all(x["status"] == "available" for x in tools) and all(x["status"] == "prepared" for x in packages)
-    return {"ready": ready, "environment": str(environment), "python_version": python_version(environment), "system": tools, "python": packages,
+    ready = compatible_python and not inspection_error and all(x["status"] == "available" for x in tools) and all(x["status"] == "prepared" for x in packages)
+    return {"ready": ready, "environment": str(environment), "python_version": runtime_version, "python_compatible": compatible_python, "preparation_status": "ready" if ready else "stale or incomplete", "system": tools, "python": packages,
             "inspection_error": inspection_error, "last_preparation_error": error}

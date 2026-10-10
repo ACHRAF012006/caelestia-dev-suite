@@ -3,7 +3,7 @@
 Component source cannot supply transformations, paths, or host code.
 """
 import json
-from backend.paths import SafetyError, atomic_write, digest, no_symlinks
+from backend.paths import SafetyError, atomic_write, digest, no_symlinks, durable_unlink
 
 TARGET = 'caelestia-dashboard-timer'
 from backend.compatibility import COMMIT, DASHBOARD_FILES as FILES, require_release
@@ -161,7 +161,7 @@ def apply(paths, proposal):
     path = receipt_path(paths)
     if proposal['receipt_after'] is None:
         if path.exists():
-            path.unlink()
+            durable_unlink(path)
     else:
         atomic_write(path, json.dumps(proposal['receipt_after'], indent=2).encode(), 0o600)
 
@@ -182,6 +182,6 @@ def recover(paths, proposal):
         atomic_write(paths.shell / name, proposal['before'][name].encode(), proposal['modes'][name])
     if proposal['receipt_before'] is None:
         if path.exists():
-            path.unlink()
+            durable_unlink(path)
     else:
         atomic_write(path, proposal['receipt_before'].encode(), 0o600)

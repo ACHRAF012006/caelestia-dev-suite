@@ -2,7 +2,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from backend.paths import VERSION, SafetyError, atomic_write, digest, inside, no_symlinks, component_id, fsync_directory
+from backend.paths import VERSION, SafetyError, atomic_write, digest, inside, no_symlinks, component_id, fsync_directory, durable_mkdir
 
 def now(): return datetime.now(timezone.utc).isoformat()
 
@@ -12,7 +12,7 @@ class Backups:
     def create(self, record, files, reason, approved_shortcuts=()):
         id = uuid.uuid4().hex
         root = inside(self.paths.backups, self.paths.backups / id)
-        root.mkdir(parents=True)
+        durable_mkdir(root)
         fsync_directory(root.parent)
         metadata = {"backup_id": id, "component_id": record["id"], "version": record.get("installed_version"),
                     "date": now(), "manager_version": VERSION, "reason": reason, "record": record, "files": [],
@@ -47,7 +47,9 @@ class Backups:
             checkpoint()
             try:
                 if len(child.name) != 32 or any(x not in "0123456789abcdef" for x in child.name): continue
-                meta = json.loads(no_symlinks(child / "metadata.json").read_text())
+                metadata = no_symlinks(child / "metadata.json")
+                if not metadata.is_file() or metadata.stat().st_size > 32 * 1024 * 1024: continue
+                meta = json.loads(metadata.read_text())
                 if meta["backup_id"] != child.name or meta["component_id"] != meta["record"]["id"]: continue
                 component_id(meta["component_id"])
                 if not all(isinstance(meta[key], str) for key in ("date", "reason")): continue
@@ -57,7 +59,7 @@ class Backups:
                 continue
         return sorted(result, key=lambda x: x["date"], reverse=True)
 
-    def read(self, id):
+    def read(self, id, checkpoint=lambda: None):
         if not isinstance(id, str) or len(id) != 32 or any(x not in "0123456789abcdef" for x in id): raise SafetyError("Invalid backup ID")
         root = inside(self.paths.backups, self.paths.backups / id)
         try:
@@ -72,6 +74,7 @@ class Backups:
             if not isinstance(meta['files'], list) or len(meta['files']) > 100000: raise SafetyError('Invalid backup file count')
             paths, blobs = set(), set()
             for item in meta["files"]:
+                checkpoint()
                 self.paths.allowed(m, Path(item["path"]), [meta["record"].get("desktop_shortcut"), *meta.get("approved_shortcuts", [])])
                 if not isinstance(item['blob'], str) or not item['blob'].isascii() or not item["blob"].isdigit(): raise SafetyError("Invalid backup blob")
                 if item['path'] in paths or item['blob'] in blobs: raise SafetyError('Duplicate backup path/blob')
@@ -86,6 +89,12 @@ class Backups:
             raise SafetyError('Invalid or incomplete backup: ' + str(error)) from error
 
     def content(self, meta, item):
-        data = no_symlinks(self.paths.backups / meta["backup_id"] / item["blob"]).read_bytes()
+        id, blob = meta['backup_id'], item['blob']
+        if not isinstance(id, str) or len(id) != 32 or any(c not in '0123456789abcdef' for c in id): raise SafetyError('Invalid backup ID')
+        if not isinstance(blob, str) or not blob.isascii() or not blob.isdigit(): raise SafetyError('Invalid backup blob')
+        root = inside(self.paths.backups, self.paths.backups / id)
+        path = inside(root, root / blob)
+        if not path.is_file(): raise SafetyError('Backup blob is missing or not a regular file')
+        data = path.read_bytes()
         if digest(data) != item['checksum']: raise SafetyError('Backup checksum mismatch')
         return data

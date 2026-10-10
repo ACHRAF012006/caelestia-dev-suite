@@ -19,7 +19,7 @@ def strict_json(text):
     try:
         return json.loads(text, object_pairs_hook=pairs,
                           parse_constant=lambda value: (_ for _ in ()).throw(SafetyError("Invalid JSON number: " + value)))
-    except (ValueError, TypeError, UnicodeError) as error:
+    except (ValueError, TypeError, UnicodeError, RecursionError) as error:
         raise SafetyError(f"Invalid manifest JSON: {error}") from error
 
 
@@ -43,11 +43,19 @@ class ManifestDocument:
 
 
 def decode(text):
+    if not isinstance(text, (str, bytes)) or len(text.encode('utf-8') if isinstance(text, str) else text) > 512 * 1024:
+        raise SafetyError('Manifest: expected UTF-8 JSON at most 512 KiB')
     original = strict_json(text)
     if not isinstance(original, dict): raise SafetyError("Manifest must be an object")
     version = original.get('schema_version', 1)
     if type(version) is not int or version not in SCHEMAS:
         raise SafetyError(f"schema_version: unsupported schema {version!r}; this manager reads 1–{CURRENT_SCHEMA}. Update the manager for future schemas.")
+    queue = [(original, 0)]
+    while queue:
+        value, depth = queue.pop()
+        if depth > 32: raise SafetyError(f'Manifest schema {version}: excessive JSON nesting')
+        if isinstance(value, dict): queue.extend((item, depth + 1) for item in value.values())
+        elif isinstance(value, list): queue.extend((item, depth + 1) for item in value)
     from backend.validators import _validate_manifest
     try:
         _validate_manifest(deepcopy(original), version)

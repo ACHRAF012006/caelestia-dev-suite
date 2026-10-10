@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 from backend.paths import SafetyError, atomic_write, no_symlinks, relative, component_id
 from backend.validators import manifest_parse
+from backend.store_policy import CHANNELS
 from backend.resources import source_hash, checked as checked_resources, decode_file, serialize, deserialize, content
 
 DEFAULT_REPOSITORY = "https://github.com/ACHRAF012006/caelestia-dev-suite.git"
@@ -73,6 +74,13 @@ class Store:
         atomic_write(self.settings_path, json.dumps(settings, indent=2).encode())
         self.settings = settings
 
+    @property
+    def channel(self): return next((name for name, branch in CHANNELS.items() if branch == self.settings['branch']), 'Development')
+
+    def set_channel(self, channel):
+        if channel not in CHANNELS: raise SafetyError('Unknown release channel')
+        self.save_settings(self.settings['repository'], CHANNELS[channel], self.settings['check_on_startup'])
+
     def key(self):
         return hashlib.sha256((self.settings["repository"] + "\n" + self.settings["branch"]).encode()).hexdigest()[:24]
 
@@ -101,7 +109,7 @@ class Store:
             self.notice = "Store cache unavailable; check the repository to rebuild it"
             return None
 
-    def git(self, *args, cwd=None, timeout=45):
+    def git(self, *args, cwd=None, timeout=45, input=None):
         executable = shutil.which("git")
         if not executable: raise SafetyError("Git is missing. Install Git with your package manager, then Refresh the store.")
         env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="Never")
@@ -113,16 +121,17 @@ class Store:
         if github_cli:
             credential = ["-c", "credential.https://github.com.helper=!" + shlex.quote(github_cli) + " auth git-credential"]
         process = subprocess.Popen([executable, "-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never",
-            "-c", "protocol.ext.allow=never", *credential, *args], cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+            "-c", "protocol.ext.allow=never", *credential, *args], cwd=cwd, env=env, stdin=subprocess.PIPE if input is not None else None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         deadline = time.monotonic() + timeout
         try:
             while True:
                 if self.cancelled.is_set(): raise SafetyError("Repository check cancelled")
                 if time.monotonic() > deadline: raise SafetyError("Repository request timed out. Cached components remain available.")
                 try:
-                    output, _ = process.communicate(timeout=0.2)
+                    output, _ = process.communicate(input=input, timeout=0.2)
                     break
                 except subprocess.TimeoutExpired:
+                    input = None
                     continue
         finally:
             if process.poll() is None:
@@ -135,6 +144,20 @@ class Store:
             # No credential-bearing subprocess output is persisted or displayed.
             raise SafetyError("Git repository request failed. Check connectivity, repository/branch and access. Private repositories need Git credentials or an authenticated GitHub CLI.")
         return output
+
+    def blobs(self, objects, directory):
+        if not objects: return {}
+        values = self.git('cat-file', '--batch', cwd=directory, input=('\n'.join(objects.values()) + '\n').encode('ascii'))
+        result, offset = {}, 0
+        for name, expected in objects.items():
+            end = values.find(b'\n', offset)
+            header = values[offset:end].split()
+            if end < 0 or len(header) != 3 or header[0].decode('ascii') != expected or header[1] != b'blob': raise SafetyError('Invalid Git blob response')
+            size = int(header[2]); start = end + 1
+            if size > MAX_COMPONENT_BYTES or start + size >= len(values) or values[start + size:start + size + 1] != b'\n': raise SafetyError('Invalid Git blob size')
+            result[name] = decode_file(name, values[start:start + size]); offset = start + size + 1
+        if offset != len(values): raise SafetyError('Unexpected Git blob response data')
+        return result
 
     def scan(self):
         checked_settings(self.settings)
@@ -183,7 +206,7 @@ class Store:
         for ident, group in sorted(groups.items()):
             try:
                 if group["error"]: raise SafetyError(group["error"])
-                files = {name: decode_file(name, self.git("cat-file", "blob", obj, cwd=directory)) for name, obj in group["files"].items()}
+                files = self.blobs(group["files"], directory)
                 manifest = checked_files(files, ident)
                 entries.append({"manifest": manifest, "files": files, "hash": source_hash(files)})
             except (ValueError, UnicodeError) as error:

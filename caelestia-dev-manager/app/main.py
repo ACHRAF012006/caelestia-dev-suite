@@ -8,7 +8,7 @@ import sys
 import time
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Slot, QSize
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QShortcut, QKeySequence
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPushButton, QSplitter, QTabWidget, QTextEdit, QVBoxLayout, QWidget)
@@ -31,8 +31,10 @@ from backend.codex.package import parse, detect, encode
 from backend.templates import TEMPLATES, template
 from backend.desktop import SHORTCUT_TYPES, ShortcutConflict, desktop_directory, shortcut_filename
 from backend.dependencies import DependencyError
+from backend.jobs import JobCancelled
 from backend.store import Store
 from backend.resources import preview as resource_preview, read_directory
+from backend.review import describe as describe_authority
 
 STYLE = """
 QWidget { background: #171b23; color: #e0e5ef; font-size: 13px; }
@@ -103,6 +105,8 @@ class Window(QMainWindow):
         self.nav.set_animations_enabled(self.stack.animations_enabled)
         main.addWidget(self.nav); main.addWidget(self.stack, 1)
         self.setCentralWidget(container)
+        self.find_shortcut = QShortcut(QKeySequence.Find, self)
+        self.find_shortcut.activated.connect(self.focus_search)
         self.component_icons = ComponentIcons()
         self.make_dashboard(); self.make_components(); self.make_import(); self.make_context()
         self.make_backups(); self.make_logs(); self.make_settings()
@@ -121,12 +125,16 @@ class Window(QMainWindow):
     def guard(self, fn):
         try: return fn()
         except Exception as e:
-            self.statusBar().showMessage(str(e), 15000)
-            if isinstance(e, DependencyError):
+            from backend.dependencies import clean_output
+            message = clean_output(str(e))
+            self.statusBar().showMessage(message, 15000)
+            if isinstance(e, JobCancelled):
+                self.notify(message)
+            elif isinstance(e, DependencyError):
                 self.refresh()
                 self.show_text("Dependency preparation failed", e.details())
             else:
-                QMessageBox.warning(self, "Action could not be completed", str(e))
+                QMessageBox.warning(self, "Action could not be completed", message)
             return None
 
     def run_backend(self, title, method, *args, cancellable=False, **kwargs):
@@ -180,10 +188,37 @@ class Window(QMainWindow):
         self.dashboard_text = CodeEditor(readonly=True); layout.addWidget(self.dashboard_text)
         self.stack.addWidget(p)
 
+    def focus_search(self):
+        if self.nav.currentItem().text() == 'Component Store': self.store_page.search.setFocus()
+        else:
+            self.navigate('Components'); self.components_search.setFocus()
+
+    def filter_components(self):
+        query = self.components_search.text().casefold(); mode = self.components_filter.currentText()
+        visible = []
+        for index in range(self.components.count()):
+            item = self.components.item(index)
+            status = next((value for value in self.statuses if value['id'] == item.data(Qt.UserRole)), None)
+            if status is None: continue
+            match = query in (item.text() + ' ' + status['id'] + ' ' + status['manifest'].get('description', '')).casefold()
+            if mode == 'Installed': match = match and bool(status.get('installed'))
+            elif mode == 'Updates': match = match and status['source_modified']
+            elif mode == 'Needs attention': match = match and bool(status['missing'] or status['modified'] or not status['validation']['valid'])
+            item.setHidden(not match)
+            if match: visible.append(index)
+        current = self.components.currentItem()
+        if current is None or current.isHidden(): self.components.setCurrentRow(visible[0] if visible else -1)
+        if not visible: self.component_info.setPlainText('No components match your search.' if self.statuses else 'Create or import a component to begin.')
+
     def make_components(self):
         p, layout = page("Components", "Development source and installed copies are tracked separately. Select a component to manage it.")
         layout.addLayout(row(button("+ New Component", self.new_component, True), button("Import Folder", self.import_folder), button("Import Package", self.import_archive),
                              button("Refresh", lambda: self.guard(self.request_refresh))))
+        self.components_search = QLineEdit(); self.components_search.setPlaceholderText('Search components…'); self.components_search.setAccessibleName('Search components')
+        self.components_filter = QComboBox(); self.components_filter.addItems(['All', 'Installed', 'Updates', 'Needs attention'])
+        self.components_filter.setAccessibleName('Component filter')
+        self.components_search.textChanged.connect(self.filter_components); self.components_filter.currentTextChanged.connect(self.filter_components)
+        layout.addLayout(row(self.components_search, self.components_filter))
         split = QSplitter(); self.components = QListWidget(); self.components.setMinimumWidth(260); self.components.setIconSize(QSize(44, 44))
         self.components.currentItemChanged.connect(self.select_component); split.addWidget(self.components)
         details = QWidget(); dl = QVBoxLayout(details); dl.setContentsMargins(12, 0, 0, 0)
@@ -329,7 +364,7 @@ class Window(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Import existing component source")
         if not folder: return
         def load():
-            files = read_directory(Path(folder))
+            files = run_operation(self, "Inspect component folder", lambda context: read_directory(Path(folder), context.checkpoint), cancellable=True)
             m = manifest_parse(files["manifest.json"])
             if any(isinstance(value, bytes) for value in files.values()):
                 self.review_source_import(files, m)
@@ -405,7 +440,7 @@ class Window(QMainWindow):
     def inspect_backup(self): self.show_text("Backup metadata", json.dumps(self.manager.backups.read(self.selected_backup()), indent=2))
 
     def restore_backup(self):
-        id = self.selected_backup(); meta, record, entries, remove = self.manager.plan_restore(id)
+        id = self.selected_backup(); meta, record, entries, remove = self.run_backend("Verify backup restoration", "plan_restore", id, cancellable=True)
         text = "RESTORE " + meta["component_id"] + "\n" + "\n".join("WRITE " + str(x.path) for x in entries) + "\n" + "\n".join("REMOVE " + f["path"] for f in remove)
         host = host_integration.plan(self.manager.paths, meta["record"]["installed_manifest"])
         if host:
@@ -549,6 +584,7 @@ class Window(QMainWindow):
         if selected: self.select_id(selected)
         elif self.components.count(): self.components.setCurrentRow(0)
         else: self.select_component(None)
+        self.filter_components()
         selected_backup = self.backup_list.currentItem()
         selected_backup = selected_backup.data(Qt.UserRole) if selected_backup else None
         self.backup_list.clear()
@@ -597,7 +633,7 @@ class Window(QMainWindow):
         self.component_info.setPlainText(json.dumps({"name": r["manifest"]["name"], "id": r["id"], "status": r["status"],
             "source_version": r["manifest"]["version"], "installed_version": r.get("installed_version"),
             "source": r["source"], "source_exists": r["source_exists"], "destination": r.get("destination"),
-            "source_modified": r["source_modified"], "pids": r["pids"], "service": r.get("service"),
+            "source_modified": r["source_modified"], "runtime_state": r.get("runtime_state", "Stopped"), "pids": r["pids"], "service": r.get("service"),
             "last_install": r.get("installed_at"), "last_update": r.get("updated_at"), "enabled": r.get("enabled"),
             "compatible": r["compatible"], "service_state": r.get("service_state"),
             "Desktop Shortcut": r["desktop_shortcut_state"], "desktop_shortcut_path": (r.get("desktop_shortcut") or {}).get("path"),
@@ -669,11 +705,11 @@ class Window(QMainWindow):
                 options.plan = plan; alternative.hide()
                 executables = "\n\n".join(str(x.path) + "\n" + x.data.decode() for x in plan["files"] if (x.mode & 0o111 or x.path.suffix == ".service") and x.data is not None)
                 text = (f"{m['name']} {m['version']}\n\n" + plan["preview"] + "\n\nEXECUTABLE LAUNCHERS\n" + executables +
-                    "\n\nREQUESTED PERMISSIONS\n" + json.dumps(m.get("permissions", [])) + "\n\nDEPENDENCIES\n" + json.dumps(m.get("dependencies", {})) +
+                    "\n\nREQUESTED PERMISSIONS\n" + json.dumps(m.get("permissions", [])) + "\n\nDEPENDENCIES\n" + json.dumps(m.get("dependencies", {})) + "\n\nDEPENDENCY DIFF\n" + json.dumps(plan["dependency_diff"], indent=2) + "\n\nPLAN AUTHORITY\n" + describe_authority(plan) +
                     "\n\n" + "\n".join(plan["warnings"]) + "\n\nThis payload step writes user files. Any reviewed PC preparation is separate. Existing owned files are backed up.\nReview component source before launching or enabling.")
                 options.summary_text = (m["name"] + " " + m["version"] + "\n\n" + m.get("description", "") +
                     "\n\nInstall location\n" + str(self.manager.paths.root(m)) +
-                    "\n\nPermissions\n" + ("\n".join("• " + p for p in m.get("permissions", [])) or "No additional permissions declared.") +
+                    "\n\nReviewed manager actions\n" + describe_authority(plan) + "\n\nComponent runtime disclosures\n" + ("\n".join("• " + p for p in m.get("permissions", [])) or "No runtime access disclosure supplied.") +
                     "\n\nExisting versions are backed up so you can go back. The app runs independently of Dev Manager.\nRestart an open app to use its updated version.")
                 if plan["warnings"]: options.summary_text += "\n\nPlease note\n" + "\n".join(plan["warnings"])
                 if plan.get("host_integration"):
@@ -762,6 +798,12 @@ class Window(QMainWindow):
             self.manager.delete_source(self.current_id, confirmation); self.refresh()
 
     def closeEvent(self, event):
+        active = getattr(self, 'active_operation', None)
+        if active is not None and active.worker.job.state in {'queued', 'running'}:
+            active.request_cancel(); event.ignore()
+            self.notify('Waiting for the active operation to finish at a safe stage…')
+            QTimer.singleShot(500, self.close)
+            return
         self.closing = True
         self.stack.stop_transition()
         self.nav.stop_transition()

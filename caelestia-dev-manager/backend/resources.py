@@ -72,10 +72,11 @@ def checked(files, manifest=None, limit=MAX_SOURCE_BYTES):
     return files
 
 
-def read_directory(root):
+def read_directory(root, checkpoint=lambda: None):
     root = no_symlinks(root)
     files, total = {}, 0
     for path in sorted(root.rglob('*')):
+        checkpoint()
         no_symlinks(path)
         mode = path.lstat().st_mode
         if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)): raise SafetyError('Special source files are forbidden: ' + str(path))
@@ -89,7 +90,7 @@ def read_directory(root):
 
 
 def source_hash(files):
-    # Preserve EVERY existing text-only fingerprint and store provenance.
+    # Preserve the existing fingerprint algorithm for text-only file maps.
     values = {name: {'binary_sha256': digest(value)} if isinstance(value, bytes) else value for name, value in files.items()}
     return digest(json.dumps(values, sort_keys=True, separators=(',', ':')).encode())
 

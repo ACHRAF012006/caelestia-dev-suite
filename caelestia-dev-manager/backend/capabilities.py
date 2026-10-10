@@ -15,6 +15,17 @@ class Capability:
     runtime: str
     limitations: str
 
+@dataclass(frozen=True)
+class HostAdapter:
+    module: object
+    target: str
+    legacy_ids: tuple = ()
+
+    def participates(self, paths, manifest):
+        if manifest.get('id') in self.legacy_ids or manifest.get('integration', {}).get('target') == self.target: return True
+        selector = getattr(self.module, 'participates', None)
+        return bool(selector and selector(paths, manifest))
+
 
 class CapabilityRegistry:
     def __init__(self):
@@ -28,8 +39,11 @@ class CapabilityRegistry:
         })
         # Priority is intentional: shared dashboard membership supersedes Timer-only
         # routing, and removal resolves from receipts rather than new declarations.
-        self.hosts = (cast, dashboard, timer)
-        self.targets = MappingProxyType({cast.TARGET: cast, 'caelestia-dashboard': dashboard, timer.TARGET: timer})
+        self.routes = (HostAdapter(cast, cast.TARGET, ('cast-audio',)),
+                       HostAdapter(dashboard, 'caelestia-dashboard'),
+                       HostAdapter(timer, timer.TARGET, ('animated-timer',)))
+        self.hosts = tuple(route.module for route in self.routes)
+        self.targets = MappingProxyType({route.target: route.module for route in self.routes})
         self.proposals = MappingProxyType({'cast-audio': cast, dashboard.ID: dashboard, 'animated-timer': timer})
 
     def installer(self, paths, manifest):
@@ -52,9 +66,8 @@ class CapabilityRegistry:
     def requested(self, manifest): return manifest.get('integration', {}).get('target') in self.targets
 
     def host_plan(self, paths, manifest):
-        if manifest.get('id') == 'cast-audio' or cast.requested(manifest): return cast.plan(paths, manifest)
-        if dashboard.participates(paths, manifest): return dashboard.plan(paths, manifest)
-        if manifest.get('id') == 'animated-timer' or timer.requested(manifest): return timer.plan(paths, manifest)
+        for route in self.routes:
+            if route.participates(paths, manifest): return route.module.plan(paths, manifest)
         return None
 
     def host_action(self, action, paths, proposal):

@@ -79,7 +79,7 @@ def inspect(paths, context=None, real=True, verify_backups=True):
             for backup in manager.backups.catalog(checkpoint):
                 checkpoint()
                 try:
-                    manager.backups.read(backup['backup_id'])
+                    manager.backups.read(backup['backup_id'], checkpoint)
                     add('Backup', 'Healthy', backup['backup_id'], backup['component_id'])
                 except (OSError, ValueError) as error: add('Backup', 'Failed', str(error), backup['component_id'])
             # Completed catalogue entries omit incomplete/corrupt metadata; report

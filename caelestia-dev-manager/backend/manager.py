@@ -9,7 +9,7 @@ import subprocess
 import sys
 import uuid
 
-from backend.paths import SafetyError, atomic_write, digest, inside, no_symlinks, relative, durable_unlink
+from backend.paths import SafetyError, atomic_write, digest, inside, no_symlinks, relative, durable_unlink, fsync_directory, durable_mkdir
 from backend.validators import manifest_parse, validate
 from backend.registry import Registry
 from backend.environment import detect
@@ -17,7 +17,7 @@ from backend.installers import installer, FilePlan
 from backend.backups import Backups, now
 from backend.runtime import Runtime
 from backend.desktop import SHORTCUT_TYPES, ShortcutConflict, desktop_directory, shortcut_filename, shortcut_descriptor
-from backend.dependencies import DependencyError, clean_output, failure_report, python_version, report as dependency_report
+from backend.dependencies import DependencyError, clean_output, failure_report, python_version, report as dependency_report, fingerprint, dependency_diff
 from backend import host_integration, system_setup
 from backend.resources import content, checked as checked_resources, read_directory, source_hash
 
@@ -27,11 +27,19 @@ def locked(method):
         lockpath = no_symlinks(self.paths.database.parent / "operations.lock")
         with lockpath.open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            try: return method(self, *args, **kwargs)
+            try:
+                result = method(self, *args, **kwargs)
+                if method.__name__ in {'create', 'save_file', 'remove_file', 'download_store_source', 'prepare_dependencies', 'prepare_system', 'backup', 'delete_source'}:
+                    ident = result if method.__name__ in {'create', 'download_store_source'} else args[0] if args and isinstance(args[0], str) else None
+                    record = self.registry.get(ident) if ident else None
+                    with self.registry.db:
+                        self.registry.operation(method.__name__, ident, (record or {}).get('manifest', {}).get('version'))
+                return result
             except Exception as error:
                 if not self.registry.db.in_transaction:
+                    ident = args[0] if args and isinstance(args[0], str) and method.__name__ in {'install', 'uninstall', 'set_enabled', 'prepare_dependencies', 'prepare_system', 'backup', 'save_file', 'remove_file', 'delete_source', 'set_update_policy'} else None
                     with self.registry.db:
-                        self.registry.operation(method.__name__, state='failed', error_category=type(error).__name__)
+                        self.registry.operation(method.__name__, ident, state="cancelled" if type(error).__name__ == "JobCancelled" else "failed", error_category=type(error).__name__)
                 raise
             finally: fcntl.flock(lock, fcntl.LOCK_UN)
     return run
@@ -40,7 +48,7 @@ class Manager:
     def __init__(self, paths, real=True):
         self.paths = paths
         for root in (paths.sources, paths.manager, paths.database.parent, paths.backups):
-            no_symlinks(root).mkdir(parents=True, exist_ok=True)
+            durable_mkdir(root)
         self.registry = Registry(paths.database)
         self.backups = Backups(paths)
         self.runtime = Runtime(paths, real)
@@ -148,6 +156,8 @@ class Manager:
         try:
             for name, value in files.items(): atomic_write(inside(stage, stage / name), content(value))
             os.rename(stage, destination)
+            fsync_directory(destination.parent)
+            fsync_directory(stage.parent)
             with self.registry.db:
                 self.registry.save({"id": m["id"], "manifest": m, "source": str(destination), "draft": draft,
                                     "installed": False, "enabled": False, "created_at": now()})
@@ -177,13 +187,16 @@ class Manager:
         inside(self.paths.source(id), self.paths.source(id) / relative(filename)).unlink()
         with self.registry.db: self.registry.log(id, "Removed source file " + filename)
 
-    def plan_store_download(self, files, repository, commit):
+    def plan_store_download(self, files, repository, commit, channel="Stable"):
         from backend.store import checked_files, checked_settings
         checked_settings({"repository": repository, "branch": "main", "check_on_startup": True})
         if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40,64}", commit):
             raise SafetyError("Invalid repository commit")
         m = checked_files(files)
         record = self.registry.get(m["id"])
+        from backend.store_policy import eligibility
+        policy = eligibility(record, m, channel)
+        if not policy['allowed']: raise SafetyError(policy['status'] + '; change the update policy before downloading')
         exists = self.paths.source(m["id"]).exists()
         current = self.read_source(m["id"]) if exists else None
         before = self.source_hash(current) if current is not None else None
@@ -195,7 +208,7 @@ class Manager:
                 raise SafetyError("Local source has edits since its store download. Back up and resolve those edits before updating.")
         if record and record.get("installed") and m["type"] != record["installed_manifest"]["type"]:
             raise SafetyError("Uninstall before changing component type")
-        return {"id": m["id"], "manifest": m, "repository": repository, "commit": commit,
+        return {"id": m["id"], "manifest": m, "repository": repository, "commit": commit, "channel": channel,
                 "hash": self.source_hash(files), "before": before, "record": record,
                 "destination": str(self.paths.source(m["id"])), "files": sorted(files),
                 "changes": {"added": sorted(set(files) - set(current or {})),
@@ -206,7 +219,7 @@ class Manager:
     def download_store_source(self, files, expected):
         """Review source first. Never install, prepare dependencies or start its code."""
         self.ready()
-        plan = self.plan_store_download(files, expected["repository"], expected["commit"])
+        plan = self.plan_store_download(files, expected["repository"], expected["commit"], expected.get("channel", "Stable"))
         if plan != expected: raise SafetyError("Source changed since the store preview; review again")
         ident, manifest = plan["id"], plan["manifest"]
         destination = self.paths.source(ident)
@@ -218,16 +231,21 @@ class Manager:
             for name, text in files.items(): atomic_write(inside(stage, stage / name), content(text))
             if destination.exists():
                 backup_root = no_symlinks(self.paths.manager / "source-backups" / uuid.uuid4().hex)
-                backup_root.mkdir(parents=True)
+                durable_mkdir(backup_root)
                 backup = inside(backup_root, backup_root / ident)
                 atomic_write(backup_root / "metadata.json", json.dumps({"id": ident, "source": str(destination),
                     "repository": plan["repository"], "commit": plan["commit"], "previous_hash": plan["before"], "date": now()}).encode())
                 os.rename(destination, backup)
+                fsync_directory(backup.parent)
+                fsync_directory(destination.parent)
             os.rename(stage, destination)
             placed = True
-            record = plan["record"] or {"id": ident, "installed": False, "enabled": False, "created_at": now()}
+            fsync_directory(destination.parent)
+            fsync_directory(stage.parent)
+            record = plan["record"] or {"id": ident, "installed": False, "enabled": False, "created_at": now(),
+                                         "store_policy": {"channel": plan["channel"], "version": None, "ignored": False}}
             record.update(manifest=manifest, source=str(destination), draft=not validate(files, manifest, self.environment)["valid"],
-                          store_origin={"repository": plan["repository"], "commit": plan["commit"], "hash": plan["hash"]})
+                          store_origin={"repository": plan["repository"], "commit": plan["commit"], "hash": plan["hash"], "channel": plan["channel"]})
             with self.registry.db:
                 self.registry.save(record)
                 self.registry.log(ident, "Downloaded reviewed store source at " + plan["commit"][:12] + ("; previous source: " + str(backup) if backup else ""))
@@ -246,12 +264,26 @@ class Manager:
                 stage.rmdir()
         return ident
 
+    @locked
+    def set_update_policy(self, id, channel='Stable', version=None, ignored=False):
+        self.ready()
+        from backend.store_policy import checked
+        record = self.registry.get(id)
+        if record is None: raise SafetyError('Unknown component')
+        record['store_policy'] = checked({'channel': channel, 'version': version, 'ignored': ignored})
+        if version is not None and version != record.get('installed_version'):
+            raise SafetyError('Pinning currently supports the installed version; historical release selection is not available')
+        with self.registry.db:
+            self.registry.save(record)
+            self.registry.log(id, 'Changed reviewed store update policy')
+            self.registry.operation('update-policy', id, record.get('installed_version'))
+
     def validation(self, id):
         files = self.read_source(id)
         return validate(files, manifest_parse(files["manifest.json"]), self.environment)
 
     def prepared_path(self, m):
-        key = digest(json.dumps({"python": list(sys.version_info[:2]), "dependencies": m.get("dependencies", {}).get("python", [])}, sort_keys=True).encode())[:16]
+        key = digest(json.dumps({"fingerprint": fingerprint(), "dependencies": m.get("dependencies", {}).get("python", [])}, sort_keys=True).encode())[:16]
         return self.paths.project / "workspace/dependencies" / m["id"] / key / "venv"
 
     def dependency_status(self, id):
@@ -260,7 +292,9 @@ class Manager:
         m, source_error = record["manifest"], ""
         if self.paths.source(id).exists():
             try:
-                current = manifest_parse(self.read_source(id)["manifest.json"])
+                manifest_path = no_symlinks(self.paths.source(id) / 'manifest.json')
+                if not manifest_path.is_file() or manifest_path.stat().st_size > 512 * 1024: raise SafetyError('Missing or oversized source manifest')
+                current = manifest_parse(manifest_path.read_text())
                 if current["id"] != id: raise SafetyError("Manifest ID changed")
                 m = current
             except (OSError, ValueError, KeyError) as error:
@@ -271,12 +305,14 @@ class Manager:
         if record.get("installed"):
             installed = record["installed_manifest"]
             result["installed"] = dependency_report(installed, self.paths.root(installed) / "_venv")
+            if record.get('environment_fingerprint') and record['environment_fingerprint'] != fingerprint():
+                result['installed'].update(ready=False, preparation_status='stale environment; review Install / Update to recreate')
         return result
 
     def dependencies_prepared(self, m):
         target = self.prepared_path(m)
         result = dependency_report(m, target, target.parent / "prepared.json")
-        return not result["inspection_error"] and all(x["status"] == "prepared" for x in result["python"]) and (not result["python"] or (target / "bin/python").is_file())
+        return result["python_compatible"] and not result["inspection_error"] and all(x["status"] == "prepared" for x in result["python"]) and (not result["python"] or (target / "bin/python").is_file())
 
     def plan_system_setup(self, id):
         manifest = manifest_parse(self.read_source(id)["manifest.json"])
@@ -299,7 +335,14 @@ class Manager:
         deps = m.get("dependencies", {}).get("python", [])
         if not deps: raise SafetyError("No project-local Python dependencies declared")
         if m["runtime"] not in {"python", "python-pyside6", "quickshell"}: raise SafetyError("Python dependencies require Python or a Quickshell sidecar")
+        from packaging.specifiers import SpecifierSet
+        python_requirement = m.get('compatibility', {}).get('python')
+        if python_requirement and not SpecifierSet(python_requirement).contains(sys.version.split()[0]):
+            raise SafetyError('compatibility.python requires ' + python_requirement + '; selected Python is ' + sys.version.split()[0])
         target = no_symlinks(self.prepared_path(m))
+        cache = no_symlinks(self.paths.manager / 'package-cache' / sys.implementation.cache_tag)
+        cache.mkdir(parents=True, exist_ok=True)
+        for child in cache.rglob('*'): no_symlinks(child)
         marker = no_symlinks(target.parent / "prepared.json")
         failure = no_symlinks(target.parent / "dependency-error.json")
         if self.dependencies_prepared(m): return str(target)
@@ -311,7 +354,7 @@ class Manager:
             # Reuse only checked private staging files; never recursively delete a failed environment.
             if (target / "lib64").is_symlink(): (target / "lib64").unlink()
             for p in target.rglob("*"): no_symlinks(p)
-            subprocess.run([shutil.which("python3") or sys.executable, "-m", "venv", "--copies", str(target)], check=True, timeout=90,
+            subprocess.run([sys.executable, "-m", "venv", "--copies", str(target)], check=True, timeout=90,
                            capture_output=True, text=True)
             # venv creates a redundant lib64 link on Arch; remove the link itself, never its target.
             if (target / "lib64").is_symlink(): (target / "lib64").unlink()
@@ -319,11 +362,12 @@ class Manager:
             if context: context.checkpoint(); context.report('Downloading binary wheels into the private environment', 35)
             stage = "packages"
             subprocess.run([str(target / "bin/python"), "-m", "pip", "install", "--only-binary=:all:", *deps], check=True, timeout=600,
-                           capture_output=True, text=True, env={**os.environ, "PIP_REQUIRE_VIRTUALENV": "true"})
+                           capture_output=True, text=True, env={**os.environ, "PIP_REQUIRE_VIRTUALENV": "true", "PIP_CACHE_DIR": str(cache)})
             if context: context.checkpoint(); context.report('Verifying dependency metadata', 85)
             stage = "verification"
             for p in target.rglob("*"): no_symlinks(p)
             checked = dependency_report(m, target)
+            if not checked["python_compatible"]: raise SafetyError("Prepared Python version does not satisfy compatibility.python")
             if not all(x["status"] == "prepared" for x in checked["python"]):
                 names = ", ".join(x["requirement"] for x in checked["python"] if x["status"] != "prepared")
                 raise SafetyError("Installed distribution metadata does not satisfy: " + names)
@@ -333,7 +377,7 @@ class Manager:
             atomic_write(failure, json.dumps(data, indent=2).encode())
             with self.registry.db: self.registry.log(id, str(DependencyError(data)) + "\n" + data["output"])
             raise DependencyError(data) from error
-        atomic_write(marker, json.dumps({"dependencies": deps, "date": now()}).encode())
+        atomic_write(marker, json.dumps({"dependencies": deps, "fingerprint": fingerprint(), "date": now()}).encode())
         if failure.exists(): failure.unlink()
         with self.registry.db: self.registry.log(id, "Prepared isolated Python dependencies (binary wheels only)")
         return str(target)
@@ -389,6 +433,7 @@ class Manager:
                 "host_integration": host_plan, "enabled": enabled,
                 "remove": [f for f in previous if f["path"] not in {str(x.path) for x in entries}],
                 "warnings": validation["warnings"], "prepared": dependencies,
+                "dependency_diff": dependency_diff((old or {}).get("installed_manifest", {}), m),
                 "desktop_shortcut": shortcut, "create_shortcut": requested, "shortcut_filename": shortcut_filename,
                 "preview": "\n".join(("REPLACE " if str(x.path) in previous_by_path else "CREATE ") + str(x.path) +
                                       (" [executable]" if x.mode & 0o111 else "") for x in entries) +
@@ -458,13 +503,32 @@ class Manager:
 
     def _recover(self):
         if not self.journal.exists(): return "No interrupted operation"
-        intent = json.loads(no_symlinks(self.journal).read_text())
+        journal = no_symlinks(self.journal)
+        if not journal.is_file() or journal.stat().st_size > 32 * 1024 * 1024: raise SafetyError('Invalid or oversized transaction journal')
+        from backend.schemas import strict_json
+        intent = strict_json(journal.read_text())
+        if not isinstance(intent, dict) or type(intent.get('journal_version', 1)) is not int or intent.get('journal_version', 1) not in {1, 2}:
+            raise SafetyError('Unsupported transaction journal version; use a manager that understands it')
+        if not isinstance(intent.get('record'), dict) or not isinstance(intent.get('ownership'), list): raise SafetyError('Invalid transaction journal record/ownership')
         current = self.registry.get(intent["record"]["id"])
         if current and current.get("last_operation") == intent["operation_id"]:
             durable_unlink(self.journal)
             return "Committed operation finalized"
         backup = self.backups.read(intent["backup"])
         if backup['component_id'] != intent['record']['id']: raise SafetyError('Recovery journal/backup identity mismatch')
+        approved = [backup['record'].get('desktop_shortcut'), *backup.get('approved_shortcuts', [])]
+        receipts = set()
+        for item in intent['ownership']:
+            self.paths.allowed(backup['record']['installed_manifest'], Path(item['path']), approved)
+            if item['path'] in receipts or not isinstance(item.get('checksum'), str) or not re.fullmatch('[0-9a-f]{64}', item['checksum']) or type(item.get('mode')) is not int or not 0 <= item['mode'] <= 0o777:
+                raise SafetyError('Invalid recovery ownership receipt')
+            receipts.add(item['path'])
+        if intent.get('journal_version') == 2:
+            after = intent.get('after')
+            if not isinstance(after, dict) or set(after) - {item['path'] for item in backup['files']}: raise SafetyError('Invalid recovery after destinations')
+            for value in after.values():
+                if value is not None and (not isinstance(value, dict) or set(value) != {'checksum', 'mode'} or not isinstance(value['checksum'], str) or not re.fullmatch('[0-9a-f]{64}', value['checksum']) or type(value['mode']) is not int or not 0 <= value['mode'] <= 0o777):
+                    raise SafetyError('Invalid recovery after state')
         # Preflight every payload before any rollback write. Old journals cannot
         # prove AFTER state; ambiguous changed files require manual reconciliation.
         for f in backup['files']:
@@ -478,7 +542,7 @@ class Manager:
                 after = intent.get('after', {}).get(f['path'])
                 if state != before and state != after:
                     raise SafetyError('File changed during interrupted operation; preserve edits and reconcile manually: ' + str(path))
-            elif f['exists'] and (intent.get('journal_version') != 2 or f['path'] not in intent['after']):
+            elif f['exists'] and (intent.get('journal_version') != 2 or f['path'] not in intent['after'] or intent['after'][f['path']] is not None):
                 raise SafetyError('Missing recovery file has no verified operation state: ' + str(path))
         host_integration.recover(self.paths, intent.get("host_integration"))
         m = backup["record"]["installed_manifest"]
@@ -525,7 +589,8 @@ class Manager:
                "installed_version": m["version"], "installed_source_hash": plan["source_hash"],
                "installed_at": record.get("installed_at") or now(), "updated_at": now(), "destination": str(self.paths.root(m)),
                "desktop_shortcut": plan["desktop_shortcut"], "desktop_shortcut_requested": plan["create_shortcut"],
-               "reload_required": m["type"] in {"caelestia-plugin", "qml-component"}}
+               "reload_required": m["type"] in {"caelestia-plugin", "qml-component"},
+               "environment_fingerprint": fingerprint() if m.get('dependencies', {}).get('python') else None}
         entries = plan["files"]
         # Services must be stopped while replacing their executable source.
         if m["type"] == "user-service" and record.get("installed"): self.runtime.systemctl("stop", self.runtime.unit(id))
@@ -684,6 +749,20 @@ class Manager:
         if not record: raise SafetyError("Restore requires the component registry record")
         if not meta["record"].get("installed"): raise SafetyError("This backup records an uninstalled state; use Uninstall instead")
         self.check_owned(record)
+        self.environment = detect(self.paths)
+        restored_manifest = meta['record']['installed_manifest']
+        root = self.paths.root(restored_manifest)
+        snapshot = {}
+        from backend.resources import decode_file
+        for item in meta['files']:
+            path = Path(item['path'])
+            if item['exists'] and path.is_relative_to(root):
+                name = path.relative_to(root).as_posix()
+                if name.split('/')[0] == '_venv': continue
+                if name == 'metadata.json.disabled': name = 'metadata.json'
+                snapshot[name] = decode_file(name, self.backups.content(meta, item))
+        validation = validate(snapshot, restored_manifest, self.environment)
+        if not validation['valid']: raise SafetyError('Backup compatibility/static validation failed: ' + '\n'.join(validation['errors']))
         host_integration.plan(self.paths, meta["record"]["installed_manifest"])
         # Update backups include newly-created destinations marked absent. Only present blobs are restored.
         entries = [FilePlan(Path(f["path"]), self.backups.content(meta, f), mode=f["mode"]).seal() for f in meta["files"] if f["exists"]]
@@ -708,6 +787,8 @@ class Manager:
     def restore(self, backup_id):
         meta, record, entries, remove = self.plan_restore(backup_id)
         new = {**meta["record"], "manifest": record["manifest"], "source": record["source"], "restored_at": now()}
+        if 'store_policy' in record: new['store_policy'] = record['store_policy']
+        else: new.pop('store_policy', None)
         # Source is not restored with the installed payload; keep its current provenance.
         if "store_origin" in record: new["store_origin"] = record["store_origin"]
         else: new.pop("store_origin", None)
@@ -760,12 +841,15 @@ class Manager:
                 if not p.is_file(): result["missing"].append(str(p))
                 elif digest(p.read_bytes()) != f["checksum"] or p.stat().st_mode & 0o777 != f["mode"]: result["modified"].append(str(p))
             except (OSError, ValueError): result["modified"].append(f["path"])
+        if record.get('installed') and not list(self.registry.files(record['id'])):
+            result['modified'].append('Installed component has no ownership receipt; preserve payload and inspect backups')
         if record.get("installed"):
             m = record["installed_manifest"]
             if m["type"] == "user-service":
                 result["service_state"] = self.runtime.systemctl("is-active", self.runtime.unit(record["id"]))
                 result["service_load_state"] = self.runtime.systemctl("show", self.runtime.unit(record["id"]), "--property=LoadState", "--value")
                 result["running"] = result["service_state"] == "active"
+                result["runtime_state"] = "Service active" if result["running"] else "Starting" if result["service_state"] == "activating" else "Failed" if result["service_state"] == "failed" else "Unknown" if not result["service_state"] else "Stopped"
                 result["service"] = self.runtime.unit(record["id"])
                 result["enabled"] = self.runtime.systemctl("is-enabled", result["service"]) == "enabled" if self.runtime.real else record.get("enabled")
                 pid = self.runtime.systemctl("show", result["service"], "--property=MainPID", "--value")
@@ -773,6 +857,7 @@ class Manager:
             else:
                 result["pids"] = self.runtime.processes(record)
                 result["running"] = bool(result["pids"])
+                result["runtime_state"] = self.runtime.app_state(record, result["pids"]) if m["type"] in SHORTCUT_TYPES else "Unknown"
         else: result["running"] = False
         if record.get("installed") and host_integration.requested(installed_manifest):
             try:

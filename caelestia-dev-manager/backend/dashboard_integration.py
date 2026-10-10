@@ -5,7 +5,7 @@ remain untouched until composition is needed and are reconstructed when the last
 page leaves. The coordinator journals both receipts alongside the two host files.
 """
 import json
-from backend.paths import SafetyError, atomic_write, digest, no_symlinks, component_id
+from backend.paths import SafetyError, atomic_write, digest, no_symlinks, durable_unlink, component_id
 from backend.dashboard_contract import requested, declaration
 from backend import dashboard_compat as compat, timer_integration as timer
 
@@ -151,7 +151,7 @@ def check(paths, proposal):
 
 def write_receipt(path, value):
     if value is None:
-        if path.exists(): path.unlink()
+        if path.exists(): durable_unlink(path)
     else: atomic_write(path, json.dumps(value, indent=2).encode(), 0o600)
 
 

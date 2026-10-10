@@ -27,8 +27,8 @@ def _validate_manifest(m, schema):
     if not m.get("name") or len(m["name"]) > 120: raise SafetyError("Name is required (max 120)")
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", m.get("version", "")):
         raise SafetyError("Version must have major.minor.patch format")
-    if m.get("type") not in TYPES: raise SafetyError("Unsupported component type")
-    if m.get("runtime") not in RUNTIMES: raise SafetyError("Unsupported runtime")
+    if not isinstance(m.get("type"), str) or m["type"] not in TYPES: raise SafetyError("type: Unsupported component type")
+    if not isinstance(m.get("runtime"), str) or m["runtime"] not in RUNTIMES: raise SafetyError("runtime: Unsupported runtime")
     if m.get("entrypoint"): relative(m["entrypoint"])
     if not isinstance(m.get("args", []), list) or any(not isinstance(x, str) or any(ord(c) < 32 or ord(c) == 127 for c in x) for x in m.get("args", [])):
         raise SafetyError("args must be a list of safe strings")
@@ -50,8 +50,9 @@ def _validate_manifest(m, schema):
         if option in m.get("desktop", {}) and not isinstance(m["desktop"][option], bool): raise SafetyError(f"desktop.{option} must be boolean")
     if m.get("desktop", {}).get("createShortcut", False) and m["type"] not in {"standalone-app", "script"}:
         raise SafetyError("Desktop shortcuts require a directly launchable standalone app or script")
-    if "categories" in m.get("desktop", {}) and not re.fullmatch(r"(?:[A-Za-z]+;)+", m["desktop"]["categories"]): raise SafetyError("Invalid desktop categories")
-    if m.get("service", {}).get("restart", "no") not in {"no", "on-failure", "always"}: raise SafetyError("Invalid service restart policy")
+    if "categories" in m.get("desktop", {}) and (not isinstance(m["desktop"]["categories"], str) or not re.fullmatch(r"(?:[A-Za-z]+;)+", m["desktop"]["categories"])): raise SafetyError("desktop.categories: Invalid desktop categories")
+    restart = m.get("service", {}).get("restart", "no")
+    if not isinstance(restart, str) or restart not in {"no", "on-failure", "always"}: raise SafetyError("service.restart: Invalid service restart policy")
     if not isinstance(m.get("permissions", []), list) or any(not isinstance(x, str) for x in m.get("permissions", [])): raise SafetyError("permissions must be descriptive strings")
     if any(not isinstance(v, str) for v in m.get("compatibility", {}).values()): raise SafetyError("Compatibility values must be strings")
     from backend.capabilities import capabilities
@@ -77,7 +78,7 @@ def _validate_manifest(m, schema):
         if not isinstance(items, list) or len(items) > 32: raise SafetyError('portable_data: expected at most 32 locations')
         seen = set()
         for item in items:
-            if not isinstance(item, dict) or set(item) != {'root', 'path'} or item['root'] not in {'data', 'config', 'state'}: raise SafetyError('portable_data: requires root (data/config/state) and path')
+            if not isinstance(item, dict) or set(item) != {'root', 'path'} or not isinstance(item['root'], str) or item['root'] not in {'data', 'config', 'state'}: raise SafetyError('portable_data: requires root (data/config/state) and path')
             path = relative(item['path'])
             if not str(path).startswith('caelestia-components/' + m['id'] + '/'):
                 raise SafetyError('portable_data.path: must be a child of caelestia-components/' + m['id'])
@@ -98,6 +99,11 @@ def validate(files, manifest, environment=None):
         if manifest['integration']['dashboard']['component'] not in files:
             errors.append('Dashboard component must exist in source')
         warnings.append('Requires Dev Manager 0.7.0+ and verified Caelestia KDE v2.5.1. Installation reviews a shared dashboard bridge and restarts the shell.')
+    python_requirement = manifest.get('compatibility', {}).get('python')
+    if python_requirement and manifest['runtime'] in {'python', 'python-pyside6', 'quickshell'}:
+        from packaging.specifiers import SpecifierSet
+        import sys
+        if not SpecifierSet(python_requirement).contains(sys.version.split()[0]): errors.append('compatibility.python: selected Python does not satisfy ' + python_requirement)
     minimum = manifest.get('compatibility', {}).get('manager_min_version')
     if minimum:
         from packaging.version import Version

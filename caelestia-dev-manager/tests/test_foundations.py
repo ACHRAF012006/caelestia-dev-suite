@@ -36,6 +36,13 @@ def test_schema_field_errors_and_strict_legacy(app_files):
         decode('{"schema_version":1,"schema_version":2}')
 
 
+@pytest.mark.parametrize('field,value', [('type', []), ('runtime', {}), ('desktop', {'categories': 1}),
+                                       ('service', {'restart': []}), ('portable_data', [{'root': [], 'path': 'x'}])])
+def test_schema_invalid_field_types_report_schema_and_field(app_files, field, value):
+    with pytest.raises(SafetyError, match='schema 2: ' + field):
+        decode(json.dumps({**app_files[0], 'schema_version': 2, field: value}))
+
+
 def test_legacy_database_upgrade_backed_up(tmp_path):
     path = tmp_path / 'db.sqlite'
     db = sqlite3.connect(path)
@@ -94,6 +101,20 @@ def test_backup_rechecked_when_used(manager, app_files):
     with pytest.raises(SafetyError, match='checksum'): manager.backups.content(backup, item)
 
 
+def test_recovery_refuses_external_deletion_during_replacement(manager, app_files, monkeypatch):
+    from backend.installers import FilePlan
+    m, files = app_files; manager.create(files); manager.install(m['id'])
+    original = FilePlan.content
+    def crash(plan):
+        if manager.journal.exists(): raise SystemExit('power loss')
+        return original(plan)
+    monkeypatch.setattr(FilePlan, 'content', crash)
+    with pytest.raises(SystemExit): manager.install(m['id'])
+    deleted = manager.paths.root(m) / 'README.md'; deleted.unlink()
+    with pytest.raises(SafetyError, match='Missing recovery file'): manager.recover()
+    assert not deleted.exists() and manager.journal.exists()
+
+
 def test_cast_tampered_plan_and_recovery_rejected(manager):
     from backend import host_integration as host
     fixture = Path(__file__).parent / 'fixtures/caelestia-kde'
@@ -134,3 +155,50 @@ def test_capability_registry_refuses_unknown_code_and_hosts(manager):
     assert inspect(manager.paths, 'cast-audio')['status'] == 'Unsupported'
     with pytest.raises(SafetyError, match='verified Caelestia'):
         host.plan(manager.paths, {'id': 'cast-audio', 'integration': {'target': host.TARGET}})
+
+
+def test_transactional_database_upgrade_failure_rolls_back(tmp_path):
+    from backend.database import migrate
+    path = tmp_path / 'version-one.sqlite'
+    db = sqlite3.connect(path)
+    db.executescript('CREATE TABLE components(id TEXT PRIMARY KEY, record TEXT NOT NULL); CREATE TABLE ownership(path TEXT PRIMARY KEY, component TEXT NOT NULL, checksum TEXT NOT NULL, mode INTEGER NOT NULL); CREATE TABLE events(time TEXT NOT NULL, component TEXT, message TEXT NOT NULL); PRAGMA user_version=1;')
+    # Simulate a DDL failure after operations is created, before version commit.
+    db.set_authorizer(lambda action, a, b, c, d: sqlite3.SQLITE_DENY if action == sqlite3.SQLITE_CREATE_INDEX else sqlite3.SQLITE_OK)
+    with pytest.raises(SafetyError, match='migration failed'): migrate(db, path)
+    assert db.execute('PRAGMA user_version').fetchone()[0] == 1
+    assert not db.execute("SELECT name FROM sqlite_master WHERE name='operations'").fetchone()
+    db.set_authorizer(None); migrate(db, path)
+    assert db.execute('PRAGMA user_version').fetchone()[0] == 2
+    db.close()
+
+
+def test_restore_rechecks_compatibility_and_empty_ownership_is_reported(manager, app_files, monkeypatch):
+    m, files = app_files; manager.create(files); manager.install(m['id']); backup = manager.backup(m['id'])
+    backup_manifest = backup['record']['installed_manifest']
+    backup_manifest['compatibility'] = {'plasma': '999'}
+    from backend.paths import atomic_write
+    metadata = manager.paths.backups / backup['backup_id'] / 'metadata.json'
+    atomic_write(metadata, json.dumps(backup).encode())
+    with pytest.raises(SafetyError, match='compatibility'): manager.plan_restore(backup['backup_id'])
+    with manager.registry.db: manager.registry.replace_files(m['id'], [])
+    status = manager.status(manager.registry.get(m['id']))
+    assert status['status'] == 'Broken' and any('ownership receipt' in p for p in status['modified'])
+
+
+def test_portable_data_is_narrow_declaration_and_hooks_are_rejected(app_files):
+    m = {**app_files[0], 'schema_version': 2, 'portable_data': [{'root': 'data', 'path': 'caelestia-components/harmless-test/settings.json'}]}
+    assert decode(json.dumps(m)).manifest['portable_data'] == m['portable_data']
+    for path in ['../../private', 'cast-audio/settings.json', 'caelestia-components/another-id/settings.json']:
+        with pytest.raises(SafetyError): decode(json.dumps({**m, 'portable_data': [{'root': 'data', 'path': path}]}))
+    with pytest.raises(SafetyError, match='Unknown'):
+        decode(json.dumps({**m, 'data_migrations': [{'run': 'arbitrary-python.py'}]}))
+
+
+def test_special_backup_blob_and_future_journal_fail_closed(manager, app_files):
+    import os
+    m, files = app_files; manager.create(files); manager.install(m['id']); backup = manager.backup(m['id'])
+    path = manager.paths.backups / backup['backup_id'] / '0'; path.unlink(); os.mkfifo(path)
+    with pytest.raises(SafetyError, match='regular file'): manager.backups.read(backup['backup_id'])
+    manager.journal.write_text(json.dumps({'journal_version': 99}))
+    with pytest.raises(SafetyError, match='journal version'): manager.recover()
+    assert manager.journal.exists()

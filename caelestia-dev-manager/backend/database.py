@@ -1,7 +1,7 @@
 """Explicit, transactional SQLite upgrades; legacy unversioned databases are v0."""
 import sqlite3
 import uuid
-from backend.paths import SafetyError, no_symlinks, fsync_directory
+from backend.paths import SafetyError, no_symlinks, fsync_directory, durable_mkdir
 
 CURRENT_VERSION = 2
 LEGACY = {
@@ -25,7 +25,7 @@ def migrate(db, path):
     if current == CURRENT_VERSION: return
     if tables:
         directory = no_symlinks(path.parent / 'database-backups')
-        directory.mkdir(parents=True, exist_ok=True)
+        durable_mkdir(directory)
         backup = directory / f'v{current}-{uuid.uuid4().hex}.sqlite3'
         destination = sqlite3.connect(backup)
         try: db.backup(destination)

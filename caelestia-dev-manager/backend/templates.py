@@ -6,7 +6,8 @@ TEMPLATES = {"Empty Caelestia Plugin": ("caelestia-plugin", "quickshell"),
              "Python + PySide6 Application": ("standalone-app", "python-pyside6"),
              "QML Component": ("qml-component", "quickshell"),
              "Shell Script": ("script", "shell"), "Python Script": ("script", "python"),
-             "systemd User Service": ("user-service", "python"), "Empty Project": ("standalone-app", "none")}
+             "systemd User Service": ("user-service", "python"), "Shell User Service": ("user-service", "shell"),
+             "Caelestia Dashboard Page": ("caelestia-plugin", "quickshell"), "Empty Project": ("standalone-app", "none")}
 
 def template(name, id, choice, description=""):
     type, runtime = TEMPLATES[choice]
@@ -35,5 +36,13 @@ def template(name, id, choice, description=""):
         files["metadata.json"] = json.dumps({"id": id, "name": name, "version": m["version"], "description": description,
                                               "type": "quickshell", "ui": "main.qml", "restart": True}, indent=2) + "\n"
         if type == "qml-component": m["integration"] = {"target": "caelestia-plugin"}
+    if choice == 'Shell User Service':
+        m['service'] = {'restart': 'on-failure'}
+        files[m['entrypoint']] = '#!/bin/bash\nset -euo pipefail\nwhile true; do sleep 30; done\n'
+    if choice == 'Caelestia Dashboard Page':
+        from backend.compatibility import COMMIT
+        m['compatibility'] = {'manager_min_version': '0.8.0', 'caelestia_commit': COMMIT}
+        m['integration'] = {'target': 'caelestia-dashboard', 'dashboard': {'id': id, 'title': name[:40], 'icon': 'widgets', 'component': 'DashboardPage.qml', 'order': 50}}
+        files['DashboardPage.qml'] = 'import QtQuick\nimport QtQuick.Layouts\nimport QtQuick.Controls\n\nItem {\n    required property var controller\n    property bool presentationActive: true\n    implicitWidth: 480; implicitHeight: 320\n    Label { anchors.centerIn: parent; text: ' + json.dumps(name) + ' }\n}\n'
     files = {"manifest.json": json.dumps(m, indent=2) + "\n", **files}
     return m, files

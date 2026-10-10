@@ -46,6 +46,7 @@ def read(path, staging_parent, context=None):
             names, total = set(), 0
             for info in members:
                 checkpoint()
+                if info.orig_filename != info.filename: raise SafetyError("Archive filename contains NUL")
                 relative(info.filename)
                 if info.filename in names: raise SafetyError('Duplicate archive path')
                 names.add(info.filename)
@@ -64,6 +65,7 @@ def read(path, staging_parent, context=None):
             if names != {'package.json', *('payload/' + name for name in meta['files'])}: raise SafetyError('Archive checksum inventory does not match members')
             for name, item in meta['files'].items():
                 relative(name)
+                if name.split("/")[0] == "_venv": raise SafetyError("Reserved dependency payload path")
                 if not isinstance(item, dict) or set(item) != {'sha256', 'size'} or type(item['size']) is not int or item['size'] != archive.getinfo('payload/' + name).file_size: raise SafetyError('Invalid checksum/size metadata')
                 if any(other.startswith(name + '/') for other in meta['files']): raise SafetyError('Archive file/directory conflict')
             staging_parent.mkdir(parents=True, exist_ok=True)

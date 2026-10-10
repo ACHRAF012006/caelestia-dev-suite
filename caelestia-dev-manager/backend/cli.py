@@ -2,6 +2,7 @@
 import argparse
 import json
 import sys
+import sqlite3
 from pathlib import Path
 from backend.paths import Paths, VERSION, SafetyError
 
@@ -10,6 +11,8 @@ COMMANDS = {'status', 'doctor', 'list', 'validate', 'backup'}
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv == ['--version']:
+        print(VERSION); return 0
     if not any(arg in COMMANDS for arg in argv):
         from app.main import main as gui_main
         return gui_main()
@@ -31,6 +34,12 @@ def main(argv=None):
         elif args.command == 'backup':
             from backend.backups import Backups
             value = Backups(paths).catalog()
+        elif args.command == 'validate':
+            from backend.resources import read_directory
+            from backend.validators import manifest_parse, validate
+            from backend.environment import detect
+            files = read_directory(paths.source(args.component))
+            value = validate(files, manifest_parse(files['manifest.json']), detect(paths))
         elif not paths.database.exists(): value = []
         else:
             manager = reader(paths, real=not bool(args.sandbox))
@@ -42,7 +51,7 @@ def main(argv=None):
         print(json.dumps(value, indent=2, ensure_ascii=False))
         if isinstance(value, dict) and (value.get('valid') is False or any(c['status'] == 'Failed' for c in value.get('checks', []))): return 1
         return 0
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError, KeyError, sqlite3.Error) as error:
         from backend.dependencies import clean_output
         print(clean_output(str(error)), file=sys.stderr); return 1
 

@@ -91,3 +91,17 @@ def test_reviewed_background_job_keeps_qt_responsive_and_owns_connection(manager
     assert view.run_backend('Verify test state', 'job_probe', cancellable=True) == 'verified'
     timer.stop(); assert len(ticks) >= 3
     view.close(); app.processEvents()
+
+
+def test_redacted_manager_log_rotation_is_bounded(manager):
+    from backend.logging import logger
+    log = logger(manager.paths.database.parent / 'logs')
+    log.handlers[0].maxBytes = 180
+    for _ in range(12): log.info('password=secret Authorization: Basic credential https://user:token@example.test/?key=secret')
+    files = list((manager.paths.database.parent / 'logs').glob('manager.log*'))
+    assert len(files) <= 4
+    for path in files:
+        for line in path.read_text().splitlines():
+            record = json.loads(line)
+            assert record['category'] == 'manager'
+            assert 'secret' not in record['message'] and 'credential' not in record['message']

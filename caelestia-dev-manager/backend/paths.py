@@ -6,7 +6,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 
 class SafetyError(ValueError):
     pass
@@ -55,16 +55,27 @@ def durable_unlink(path):
     path.unlink()
     fsync_directory(path.parent)
 
+def durable_mkdir(path):
+    path = no_symlinks(path)
+    missing, current = [], path
+    while not current.exists():
+        missing.append(current); current = current.parent
+    if not current.is_dir(): raise SafetyError('Directory parent is not a directory: ' + str(current))
+    for directory in reversed(missing):
+        no_symlinks(directory).mkdir(exist_ok=True)
+        fsync_directory(directory.parent)
+    return path
+
 def atomic_write(path, data, mode=0o644):
     path = no_symlinks(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    durable_mkdir(path.parent)
     fd, temporary = tempfile.mkstemp(prefix=".cdm-", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
             stream.flush()
+            os.fchmod(stream.fileno(), mode)
             os.fsync(stream.fileno())
-        os.chmod(temporary, mode)
         os.replace(temporary, path)
         fsync_directory(path.parent)
     finally:
