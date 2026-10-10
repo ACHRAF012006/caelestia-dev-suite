@@ -52,7 +52,7 @@ class JobManager:
 
     def submit(self, job, function):
         if not self.capacity.acquire(blocking=False): raise SafetyError('Background job queue is full; wait for a job to finish')
-        with self.lock: self.jobs = (self.jobs + [job])[-200:]
+        with self.lock: self.jobs.append(job)
         progress = job.context.progress
         def report(message, percent=None):
             job.logs = (job.logs + [{'time': time.time(), 'message': clean_output(message), 'percent': percent}])[-300:]
@@ -72,10 +72,15 @@ class JobManager:
                 job.error = {'category': type(error).__name__, 'message': clean_output(str(error)), 'job_id': job.id}
             finally:
                 self.capacity.release()
+                # Completed results can contain entire catalogues/source maps.
+                # Their caller owns the result; the pool retains active jobs only.
+                with self.lock: self.jobs = [active for active in self.jobs if active is not job]
             return job
         try: job.future = self.executor.submit(run)
         except Exception:
-            self.capacity.release(); raise
+            self.capacity.release()
+            with self.lock: self.jobs = [active for active in self.jobs if active is not job]
+            raise
         return job
 
     def shutdown(self):

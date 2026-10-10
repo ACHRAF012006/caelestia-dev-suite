@@ -36,6 +36,21 @@ def test_mutating_job_cannot_be_cancelled():
     pool.shutdown()
 
 
+def test_completed_catalogue_results_are_released_by_pool():
+    import gc
+    import weakref
+    class Catalogue:
+        def __init__(self): self.payload = b'x' * (8 * 1024 * 1024)
+    pool = JobManager(concurrency=1)
+    job = pool.submit(Job('catalogue'), lambda ctx: Catalogue())
+    job.future.result(3)
+    result = weakref.ref(job.result)
+    del job
+    gc.collect()
+    assert result() is None
+    pool.shutdown()
+
+
 def test_diagnostics_read_only_reports_corrupt_backup(manager, app_files):
     m, files = app_files; manager.create(files); manager.install(m['id']); backup = manager.backup(m['id'])
     (manager.paths.backups / backup['backup_id'] / '0').write_bytes(b'corrupt')
@@ -89,6 +104,10 @@ def test_reviewed_background_job_keeps_qt_responsive_and_owns_connection(manager
     monkeypatch.setattr(Manager, 'job_probe', slow, raising=False)
     timer = QTimer(view); timer.setInterval(10); timer.timeout.connect(lambda: ticks.append(1)); timer.start()
     assert view.run_backend('Verify test state', 'job_probe', cancellable=True) == 'verified'
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from app.jobs import JobDialog
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert not view.findChildren(JobDialog)
     timer.stop(); assert len(ticks) >= 3
     view.close(); app.processEvents()
 

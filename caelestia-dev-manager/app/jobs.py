@@ -87,7 +87,9 @@ def run_operation(parent, name, function, cancellable=False):
     previous = getattr(parent, "active_operation", None)
     parent.active_operation = dialog
     try: dialog.exec()
-    finally: parent.active_operation = previous
+    finally:
+        parent.active_operation = previous
+        dialog.deleteLater()
     job = dialog.worker.job
     if job.exception is not None: raise job.exception
     if job.state == 'cancelled':
