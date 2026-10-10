@@ -23,7 +23,7 @@ def relative(value):
     if not isinstance(value, str) or not value or "\\" in value or any(ord(c) < 32 or ord(c) == 127 for c in value):
         raise SafetyError("Invalid relative filename")
     p = PurePosixPath(value)
-    if p.is_absolute() or any(x in {"", ".", ".."} for x in value.split("/")) or value.startswith("~"):
+    if re.match(r"^[A-Za-z]:", value) or p.is_absolute() or any(x in {"", ".", ".."} for x in value.split("/")) or value.startswith("~"):
         raise SafetyError(f"Unsafe path: {value}")
     if any(x.startswith(".") for x in p.parts) or any(x in {"__pycache__", "node_modules"} for x in p.parts):
         raise SafetyError(f"Hidden/cache paths are not component files: {value}")

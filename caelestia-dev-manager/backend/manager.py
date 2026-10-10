@@ -19,6 +19,7 @@ from backend.runtime import Runtime
 from backend.desktop import SHORTCUT_TYPES, ShortcutConflict, desktop_directory, shortcut_filename, shortcut_descriptor
 from backend.dependencies import DependencyError, clean_output, failure_report, python_version, report as dependency_report
 from backend import host_integration, system_setup
+from backend.resources import content, checked as checked_resources, read_directory, source_hash
 
 def locked(method):
     @functools.wraps(method)
@@ -108,22 +109,12 @@ class Manager:
     def read_source(self, id):
         source = self.paths.source(id)
         if not source.exists(): raise SafetyError("Development source is missing")
-        files = {}
-        for p in sorted(source.rglob("*")):
-            no_symlinks(p)
-            if p.is_file():
-                rel = str(p.relative_to(source))
-                if any(x.startswith(".") or x in {"__pycache__", "node_modules"} for x in p.relative_to(source).parts): continue
-                relative(rel)
-                if rel.split("/")[0] == "_venv": raise SafetyError("_venv is reserved for installed dependencies")
-                if p.stat().st_size > 8 * 1024 * 1024: raise SafetyError(f"File too large for text source editor: {p}")
-                try: files[rel] = p.read_text()
-                except UnicodeError: raise SafetyError("Version 0.1 supports UTF-8 text assets only; use SVG icons")
-        if sum(len(x.encode()) for x in files.values()) > 16 * 1024 * 1024: raise SafetyError("Source exceeds 16 MiB")
+        files = read_directory(source)
+        if 'manifest.json' not in files: raise SafetyError('manifest.json is required')
+        checked_resources(files, manifest_parse(files['manifest.json']))
         return files
 
-    def source_hash(self, files):
-        return digest(json.dumps(files, sort_keys=True, separators=(",", ":")).encode())
+    def source_hash(self, files): return source_hash(files)
 
     def discover(self):
         for p in sorted(self.paths.sources.iterdir()):
@@ -141,10 +132,9 @@ class Manager:
     @locked
     def create(self, files, draft=False):
         self.ready()
-        if len(files) > 500 or sum(len(x.encode()) for x in files.values() if isinstance(x, str)) > 16 * 1024 * 1024:
-            raise SafetyError("Source exceeds 500 files or 16 MiB")
         if "manifest.json" not in files: raise SafetyError("manifest.json is required")
         m = manifest_parse(files["manifest.json"])
+        checked_resources(files, m)
         result = validate(files, m)
         if not draft and not result["valid"]: raise SafetyError("\n".join(result["errors"]))
         destination = self.paths.source(m["id"])
@@ -152,12 +142,11 @@ class Manager:
         for name, value in files.items():
             relative(name)
             if name.split("/")[0] == "_venv": raise SafetyError("_venv is reserved")
-            if not isinstance(value, str): raise SafetyError("Only UTF-8 text source is supported")
             if any(other.startswith(name + "/") for other in files): raise SafetyError("File/directory conflict")
         stage = inside(self.paths.project / "workspace", self.paths.project / "workspace" / ("import-" + uuid.uuid4().hex))
         stage.mkdir(parents=True)
         try:
-            for name, value in files.items(): atomic_write(inside(stage, stage / name), value.encode())
+            for name, value in files.items(): atomic_write(inside(stage, stage / name), content(value))
             os.rename(stage, destination)
             with self.registry.db:
                 self.registry.save({"id": m["id"], "manifest": m, "source": str(destination), "draft": draft,
@@ -177,7 +166,7 @@ class Manager:
             if m["id"] != id: raise SafetyError("Changing a component ID is not supported")
             record = self.registry.get(id)
             if record.get("installed") and m["type"] != record["installed_manifest"]["type"]: raise SafetyError("Uninstall before changing type")
-        atomic_write(target, text.encode())
+        atomic_write(target, content(text))
         self.discover()
         with self.registry.db: self.registry.log(id, "Saved source file " + filename)
 
@@ -226,7 +215,7 @@ class Manager:
         backup = None
         placed = False
         try:
-            for name, text in files.items(): atomic_write(inside(stage, stage / name), text.encode())
+            for name, text in files.items(): atomic_write(inside(stage, stage / name), content(text))
             if destination.exists():
                 backup_root = no_symlinks(self.paths.manager / "source-backups" / uuid.uuid4().hex)
                 backup_root.mkdir(parents=True)
@@ -315,6 +304,8 @@ class Manager:
         failure = no_symlinks(target.parent / "dependency-error.json")
         if self.dependencies_prepared(m): return str(target)
         if marker.exists(): marker.unlink()
+        context = getattr(self, 'job_context', None)
+        if context: context.checkpoint(); context.report('Creating isolated Python environment', 10)
         stage = "environment"
         try:
             # Reuse only checked private staging files; never recursively delete a failed environment.
@@ -325,9 +316,11 @@ class Manager:
             # venv creates a redundant lib64 link on Arch; remove the link itself, never its target.
             if (target / "lib64").is_symlink(): (target / "lib64").unlink()
             for p in target.rglob("*"): no_symlinks(p)
+            if context: context.checkpoint(); context.report('Downloading binary wheels into the private environment', 35)
             stage = "packages"
             subprocess.run([str(target / "bin/python"), "-m", "pip", "install", "--only-binary=:all:", *deps], check=True, timeout=600,
                            capture_output=True, text=True, env={**os.environ, "PIP_REQUIRE_VIRTUALENV": "true"})
+            if context: context.checkpoint(); context.report('Verifying dependency metadata', 85)
             stage = "verification"
             for p in target.rglob("*"): no_symlinks(p)
             checked = dependency_report(m, target)
@@ -756,7 +749,7 @@ class Manager:
             current = manifest_parse(files["manifest.json"])
             result["manifest"] = current
             icon = files.get(current.get("desktop", {}).get("icon") or "assets/icon.svg", "")
-            result["icon_svg"] = icon if len(icon.encode()) <= 65536 else ""
+            result["icon_svg"] = icon if isinstance(icon, str) and len(icon.encode()) <= 65536 else ""
             result["source_hash"] = self.source_hash(files)
             result["source_modified"] = bool(record.get("installed") and result["source_hash"] != record.get("installed_source_hash"))
             result["validation"] = validate(files, current, self.environment)

@@ -201,4 +201,3 @@ def recover(paths, proposal):
             path.unlink()
     else:
         atomic_write(path, proposal["receipt_before"].encode(), 0o600)
-

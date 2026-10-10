@@ -15,14 +15,11 @@ from datetime import datetime, timezone
 
 from backend.paths import SafetyError, atomic_write, no_symlinks, relative, component_id
 from backend.validators import manifest_parse
+from backend.resources import source_hash, checked as checked_resources, decode_file, serialize, deserialize, content
 
 DEFAULT_REPOSITORY = "https://github.com/ACHRAF012006/caelestia-dev-suite.git"
 MAX_COMPONENT_BYTES = 8 * 1024 * 1024
 MAX_CATALOG_BYTES = 64 * 1024 * 1024
-
-
-def source_hash(files):
-    return hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def checked_settings(settings):
@@ -39,24 +36,13 @@ def checked_settings(settings):
 
 
 def checked_files(files, expected_id=None):
-    if not isinstance(files, dict) or not 1 <= len(files) <= 500:
-        raise SafetyError("A component must contain 1–500 UTF-8 files")
-    total = 0
+    if not isinstance(files, dict): raise SafetyError('Invalid component file map')
+    manifest = manifest_parse(files.get('manifest.json', ''))
+    checked_resources(files, manifest, MAX_COMPONENT_BYTES)
     for name, value in files.items():
-        relative(name)
-        if name.split("/")[0] == "_venv" or not isinstance(value, str) or "\0" in value:
-            raise SafetyError("Reserved path or non-text component file")
-        if any(other.startswith(name + "/") for other in files):
-            raise SafetyError("Conflicting component file paths")
-        total += len(value.encode("utf-8"))
-        if name.endswith(".py"):
-            try:
-                ast.parse(value, filename=name)
-            except (SyntaxError, ValueError) as error:
-                raise SafetyError("Invalid Python source: " + name) from error
-    if total > MAX_COMPONENT_BYTES:
-        raise SafetyError("Component exceeds 8 MiB")
-    manifest = manifest_parse(files.get("manifest.json", ""))
+        if name.endswith('.py'):
+            try: ast.parse(value, filename=name)
+            except (SyntaxError, ValueError) as error: raise SafetyError('Invalid Python source: ' + name) from error
     if expected_id is not None and manifest["id"] != expected_id:
         raise SafetyError("Component directory and manifest ID differ")
     if manifest.get("entrypoint") not in files:
@@ -102,7 +88,12 @@ class Store:
             if catalog["repository"] != self.settings["repository"] or catalog["branch"] != self.settings["branch"]:
                 raise SafetyError("Catalogue repository changed")
             if not re.fullmatch(r"[0-9a-f]{40,64}", catalog["commit"]): raise SafetyError("Invalid catalogue commit")
+            if len(catalog['entries']) > 128: raise SafetyError('Catalogue component-count limit exceeded')
+            total = 0
             for entry in catalog["entries"]:
+                entry['files'] = deserialize(entry['files'])
+                total += sum(len(content(value)) for value in entry['files'].values())
+                if total > MAX_CATALOG_BYTES: raise SafetyError('Catalogue total size limit exceeded')
                 entry["manifest"] = checked_files(entry["files"], entry["manifest"]["id"])
                 entry["hash"] = source_hash(entry["files"])
             return catalog
@@ -192,14 +183,15 @@ class Store:
         for ident, group in sorted(groups.items()):
             try:
                 if group["error"]: raise SafetyError(group["error"])
-                files = {name: self.git("cat-file", "blob", obj, cwd=directory).decode("utf-8") for name, obj in group["files"].items()}
+                files = {name: decode_file(name, self.git("cat-file", "blob", obj, cwd=directory)) for name, obj in group["files"].items()}
                 manifest = checked_files(files, ident)
                 entries.append({"manifest": manifest, "files": files, "hash": source_hash(files)})
             except (ValueError, UnicodeError) as error:
                 issues.append(ident + ": " + str(error))
         catalog = {"repository": self.settings["repository"], "branch": self.settings["branch"], "commit": commit,
                    "checked_at": datetime.now(timezone.utc).isoformat(), "entries": entries, "issues": issues}
-        atomic_write(self.cache_path(), json.dumps(catalog, ensure_ascii=False).encode())
+        stored = {**catalog, 'entries': [{**entry, 'files': serialize(entry['files'])} for entry in entries]}
+        atomic_write(self.cache_path(), json.dumps(stored, ensure_ascii=False).encode())
         return catalog
 
 

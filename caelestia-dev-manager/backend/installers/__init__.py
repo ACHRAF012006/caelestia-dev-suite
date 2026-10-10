@@ -6,6 +6,7 @@ import shlex
 import shutil
 import sys
 from backend.paths import SafetyError, digest, inside, no_symlinks
+from backend.resources import content
 
 @dataclass
 class FilePlan:
@@ -53,7 +54,7 @@ class BaseInstaller:
 
     def plan_install(self, m, files, dependencies=None):
         root = self.paths.root(m)
-        result = [FilePlan(inside(root, root / path), data=value.encode()).seal() for path, value in files.items()]
+        result = [FilePlan(inside(root, root / path), data=content(value)).seal() for path, value in files.items()]
         if dependencies:
             for source in sorted(dependencies.rglob("*")):
                 no_symlinks(source)

@@ -57,5 +57,7 @@ def detect(text):
     return "none"
 
 def encode(files, manifest):
+    if any(isinstance(value, bytes) for value in files.values()):
+        raise SafetyError('Binary resources need .cdmpkg archive transport; paste packages remain UTF-8')
     header = "CAELESTIA_DEV_PACKAGE\n" + "\n".join(f"{k}: {manifest[k]}" for k in ("name", "id", "type", "version"))
     return header + "\n\n" + "\n".join(f"--- FILE: {p} ---\n{value.rstrip()}\n" for p, value in files.items())

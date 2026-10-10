@@ -55,6 +55,7 @@ class ComponentIcons:
         self.cache = OrderedDict()
 
     def pixmap(self, manifest, svg='', size=80, ratio=1):
+        if not isinstance(svg, str): svg = ""
         ratio = max(1, min(4, ratio))
         key = (manifest.get('id'), manifest.get('name'), hashlib.sha256(svg.encode()).digest(), size, ratio)
         if key in self.cache:

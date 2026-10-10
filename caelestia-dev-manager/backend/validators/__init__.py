@@ -90,6 +90,8 @@ def validate(files, manifest, environment=None):
     try:
         manifest = manifest_parse(json.dumps(manifest))
         for path in files: relative(path)
+        from backend.resources import checked
+        checked(files, manifest)
     except SafetyError as e:
         return {"errors": [str(e)], "warnings": [], "valid": False}
     if manifest.get('integration', {}).get('target') == 'caelestia-dashboard':
