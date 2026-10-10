@@ -112,8 +112,6 @@ class KDEIntegrationInstaller(BaseInstaller):
     capabilities = set()
     def plan_install(self, *args, **kwargs): raise SafetyError("No verified KDE integration adapter yet")
 
-INSTALLERS = {"standalone-app": StandaloneAppInstaller, "script": ScriptInstaller, "user-service": UserServiceInstaller,
-              "caelestia-plugin": CaelestiaPluginInstaller, "qml-component": CaelestiaPluginInstaller,
-              "kde-integration": KDEIntegrationInstaller}
-
-def installer(paths, m): return INSTALLERS[m["type"]](paths)
+def installer(paths, m):
+    from backend.capabilities import capabilities
+    return capabilities.installer(paths, m)

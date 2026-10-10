@@ -192,7 +192,7 @@ def test_unowned_directory_is_not_adopted(manager, app_files):
 def test_schema_and_permission_change_rejected(manager, app_files):
     from backend.validators import manifest_parse
     m, _ = app_files
-    with pytest.raises(SafetyError): manifest_parse(json.dumps({**m, "schema_version": 2}))
+    with pytest.raises(SafetyError): manifest_parse(json.dumps({**m, "schema_version": 3}))
     id = create(manager, app_files); manager.install(id)
     target = manager.paths.bin / id; target.chmod(0o600)
     with pytest.raises(SafetyError): manager.uninstall(id)

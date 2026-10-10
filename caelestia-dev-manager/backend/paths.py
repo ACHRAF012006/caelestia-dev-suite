@@ -45,6 +45,16 @@ def inside(root, path):
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
+def fsync_directory(path):
+    fd = os.open(no_symlinks(path), os.O_RDONLY | os.O_DIRECTORY)
+    try: os.fsync(fd)
+    finally: os.close(fd)
+
+def durable_unlink(path):
+    path = no_symlinks(path)
+    path.unlink()
+    fsync_directory(path.parent)
+
 def atomic_write(path, data, mode=0o644):
     path = no_symlinks(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,6 +66,7 @@ def atomic_write(path, data, mode=0o644):
             os.fsync(stream.fileno())
         os.chmod(temporary, mode)
         os.replace(temporary, path)
+        fsync_directory(path.parent)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)

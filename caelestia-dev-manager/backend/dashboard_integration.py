@@ -67,11 +67,8 @@ def participates(paths, manifest):
 
 
 def verify_release(paths):
-    try:
-        valid = no_symlinks(paths.shell / '.current_commit').read_text().strip() == compat.COMMIT and no_symlinks(paths.shell / '.current_version').read_text().strip().removeprefix('VERSION=').lstrip('v') == compat.VERSION
-    except OSError as error:
-        raise SafetyError('Dashboard requires verified Caelestia KDE v2.5.1 release markers') from error
-    if not valid: raise SafetyError('Dashboard requires verified Caelestia KDE v2.5.1 at ' + compat.COMMIT)
+    from backend.compatibility import require_release
+    require_release(paths, ID)
 
 
 def legacy_receipt(originals, modes, with_timer):

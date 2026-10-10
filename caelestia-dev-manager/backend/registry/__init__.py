@@ -1,19 +1,21 @@
 import json
 import sqlite3
-from backend.paths import no_symlinks
+from backend.paths import no_symlinks, SafetyError
 
 class Registry:
     def __init__(self, path):
         path = no_symlinks(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.executescript('''
-            CREATE TABLE IF NOT EXISTS components(id TEXT PRIMARY KEY, record TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS ownership(path TEXT PRIMARY KEY, component TEXT NOT NULL, checksum TEXT NOT NULL, mode INTEGER NOT NULL);
-            CREATE TABLE IF NOT EXISTS events(time TEXT NOT NULL, component TEXT, message TEXT NOT NULL);
-        ''')
-        self.db.commit()
+        try:
+            from backend.database import migrate
+            migrate(self.db, path)
+            self.db.execute("PRAGMA journal_mode=WAL")
+            self.db.execute("PRAGMA synchronous=FULL")
+        except Exception as error:
+            self.db.close()
+            if isinstance(error, SafetyError): raise
+            raise SafetyError('Database cannot be opened safely; preserve it and its WAL before recovery: ' + str(error)) from error
 
     def get(self, id):
         row = self.db.execute("SELECT record FROM components WHERE id=?", (id,)).fetchone()
@@ -38,7 +40,20 @@ class Registry:
 
     def log(self, id, message):
         from datetime import datetime, timezone
-        self.db.execute("INSERT INTO events VALUES(?,?,?)", (datetime.now(timezone.utc).isoformat(), id, message))
+        from backend.dependencies import clean_output
+        self.db.execute("INSERT INTO events VALUES(?,?,?)", (datetime.now(timezone.utc).isoformat(), id, clean_output(message)))
+        self.db.execute('DELETE FROM events WHERE rowid NOT IN (SELECT rowid FROM events ORDER BY rowid DESC LIMIT 3000)')
 
     def logs(self):
         return [" • ".join(str(x or "manager") for x in row) for row in self.db.execute("SELECT * FROM events ORDER BY rowid DESC LIMIT 300")]
+
+    def operation(self, kind, component=None, version=None, state='succeeded', transaction_id=None, error_category=None):
+        from backend.backups import now
+        import uuid
+        self.db.execute('INSERT INTO operations VALUES(?,?,?,?,?,?,?,?)',
+                        (uuid.uuid4().hex, now(), kind, component, version, state, transaction_id, error_category))
+        self.db.execute('DELETE FROM operations WHERE id NOT IN (SELECT id FROM operations ORDER BY time DESC LIMIT 3000)')
+
+    def history(self, limit=300):
+        columns = ('id', 'time', 'type', 'component', 'version', 'state', 'transaction_id', 'error_category')
+        return [dict(zip(columns, row)) for row in self.db.execute('SELECT * FROM operations ORDER BY time DESC LIMIT ?', (min(max(limit, 1), 3000),))]

@@ -9,7 +9,7 @@ import subprocess
 import sys
 import uuid
 
-from backend.paths import SafetyError, atomic_write, digest, inside, no_symlinks, relative
+from backend.paths import SafetyError, atomic_write, digest, inside, no_symlinks, relative, durable_unlink
 from backend.validators import manifest_parse, validate
 from backend.registry import Registry
 from backend.environment import detect
@@ -27,6 +27,11 @@ def locked(method):
         with lockpath.open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             try: return method(self, *args, **kwargs)
+            except Exception as error:
+                if not self.registry.db.in_transaction:
+                    with self.registry.db:
+                        self.registry.operation(method.__name__, state='failed', error_category=type(error).__name__)
+                raise
             finally: fcntl.flock(lock, fcntl.LOCK_UN)
     return run
 
@@ -429,13 +434,16 @@ class Manager:
         snapshot.update(targets)
         backup = self.backups.create(backup_record, list(snapshot.values()), reason, [new_record.get("desktop_shortcut")])
         intent = {"backup": backup["backup_id"], "record": record, "ownership": old_files,
-                  "operation_id": uuid.uuid4().hex, "phase": "applying", "host_integration": host_plan}
+                  "operation_id": uuid.uuid4().hex, "phase": "applying", "host_integration": host_plan,
+                  "journal_version": 2,
+                  "after": {str(f.path): {"checksum": f.checksum, "mode": f.mode} for f in entries}}
+        intent['after'].update({f['path']: None for f in removals if f['path'] not in intent['after']})
         atomic_write(self.journal, json.dumps(intent).encode(), 0o600)
         try:
             for f in entries: atomic_write(self.allowed(new_record, f.path, record.get("desktop_shortcut")), f.content(), f.mode)
             for f in removals:
                 path = self.allowed(record, Path(f["path"]), new_record.get("desktop_shortcut"))
-                if path.exists(): path.unlink()
+                if path.exists(): durable_unlink(path)
             host_integration.apply(self.paths, host_plan)
             receipt = [*retain, *[{"path": str(f.path), "checksum": f.checksum, "mode": f.mode} for f in entries]]
             new_record["last_operation"] = intent["operation_id"]
@@ -443,7 +451,8 @@ class Manager:
                 self.registry.replace_files(record["id"], receipt)
                 self.registry.save(new_record)
                 self.registry.log(record["id"], reason)
-            self.journal.unlink()
+                self.registry.operation(reason, record['id'], new_record.get('installed_version'), transaction_id=intent['operation_id'])
+            durable_unlink(self.journal)
             self.prune_empty(m, list(targets))
         except Exception:
             self.registry.db.rollback()
@@ -459,20 +468,37 @@ class Manager:
         intent = json.loads(no_symlinks(self.journal).read_text())
         current = self.registry.get(intent["record"]["id"])
         if current and current.get("last_operation") == intent["operation_id"]:
-            self.journal.unlink()
+            durable_unlink(self.journal)
             return "Committed operation finalized"
         backup = self.backups.read(intent["backup"])
+        if backup['component_id'] != intent['record']['id']: raise SafetyError('Recovery journal/backup identity mismatch')
+        # Preflight every payload before any rollback write. Old journals cannot
+        # prove AFTER state; ambiguous changed files require manual reconciliation.
+        for f in backup['files']:
+            path = self.paths.allowed(backup['record']['installed_manifest'], Path(f['path']),
+                                      [backup['record'].get('desktop_shortcut'), *backup.get('approved_shortcuts', [])])
+            if self.registry.owner(path) not in {None, intent['record']['id']}: raise SafetyError('Recovery ownership collision')
+            if path.exists():
+                if not path.is_file(): raise SafetyError('Recovery target is not a regular file')
+                state = {'checksum': digest(path.read_bytes()), 'mode': path.stat().st_mode & 0o777}
+                before = {'checksum': f['checksum'], 'mode': f['mode']} if f['exists'] else None
+                after = intent.get('after', {}).get(f['path'])
+                if state != before and state != after:
+                    raise SafetyError('File changed during interrupted operation; preserve edits and reconcile manually: ' + str(path))
+            elif f['exists'] and (intent.get('journal_version') != 2 or f['path'] not in intent['after']):
+                raise SafetyError('Missing recovery file has no verified operation state: ' + str(path))
         host_integration.recover(self.paths, intent.get("host_integration"))
         m = backup["record"]["installed_manifest"]
         for f in backup["files"]:
             path = self.paths.allowed(m, Path(f["path"]), [backup["record"].get("desktop_shortcut"), *backup.get("approved_shortcuts", [])])
             if f["exists"]: atomic_write(path, self.backups.content(backup, f), f["mode"])
-            elif path.exists(): path.unlink()
+            elif path.exists(): durable_unlink(path)
         with self.registry.db:
             self.registry.replace_files(intent["record"]["id"], intent["ownership"])
             self.registry.save(intent["record"])
             self.registry.log(intent["record"]["id"], "Recovered interrupted file operation")
-        self.journal.unlink()
+            self.registry.operation('recovery', intent['record']['id'], transaction_id=intent['operation_id'])
+        durable_unlink(self.journal)
         self.prune_empty(m, [f["path"] for f in backup["files"]])
         return "Previous installed state recovered"
 

@@ -9,22 +9,18 @@ TYPES = {"standalone-app", "caelestia-plugin", "user-service", "script", "kde-in
 RUNTIMES = {"python", "python-pyside6", "shell", "qml", "quickshell", "none"}
 
 def manifest_parse(text):
-    def pairs(items):
-        out = {}
-        for k, v in items:
-            if k in out: raise SafetyError(f"Duplicate manifest key: {k}")
-            out[k] = v
-        return out
-    try:
-        m = json.loads(text, object_pairs_hook=pairs)
-    except (ValueError, TypeError) as e:
-        raise SafetyError(f"Invalid manifest JSON: {e}") from e
-    if not isinstance(m, dict): raise SafetyError("Manifest must be an object")
+    from backend.schemas import parse
+    return parse(text)
+
+
+def _validate_manifest(m, schema):
     allowed = {"id", "name", "version", "description", "type", "runtime", "entrypoint", "args", "dependencies",
                "desktop", "service", "compatibility", "permissions", "integration", "schema_version"}
+    from backend.schemas import SCHEMAS
+    allowed |= SCHEMAS[schema]
     if set(m) - allowed: raise SafetyError(f"Unknown manifest fields: {sorted(set(m)-allowed)}")
-    if m.get("schema_version", 1) != 1 or isinstance(m.get("schema_version"), bool): raise SafetyError("Only schema_version 1 is supported")
-    component_id(m.get("id"))
+    try: component_id(m.get("id"))
+    except SafetyError as error: raise SafetyError("id: " + str(error)) from error
     for key in ("name", "version", "description"):
         if not isinstance(m.get(key, ""), str) or any(ord(c) < 32 for c in m.get(key, "")):
             raise SafetyError(f"Invalid {key}")
@@ -37,7 +33,7 @@ def manifest_parse(text):
     if not isinstance(m.get("args", []), list) or any(not isinstance(x, str) or any(ord(c) < 32 or ord(c) == 127 for c in x) for x in m.get("args", [])):
         raise SafetyError("args must be a list of safe strings")
     specs = {"dependencies": {"system", "python"}, "desktop": {"icon", "terminal", "categories", "createShortcut", "startupNotify"},
-             "service": {"restart"}, "compatibility": {"plasma", "caelestia_commit", "manager_min_version"},
+             "service": {"restart"}, "compatibility": {"plasma", "caelestia_commit", "manager_min_version", "python"},
              "integration": {"target", "dashboard"}}
     for key, fields in specs.items():
         value = m.get(key, {})
@@ -58,25 +54,35 @@ def manifest_parse(text):
     if m.get("service", {}).get("restart", "no") not in {"no", "on-failure", "always"}: raise SafetyError("Invalid service restart policy")
     if not isinstance(m.get("permissions", []), list) or any(not isinstance(x, str) for x in m.get("permissions", [])): raise SafetyError("permissions must be descriptive strings")
     if any(not isinstance(v, str) for v in m.get("compatibility", {}).values()): raise SafetyError("Compatibility values must be strings")
-    if m.get("integration", {}).get("target") == "caelestia-quick-toggles" and (m["id"] != "cast-audio" or m["type"] != "caelestia-plugin" or m["runtime"] != "quickshell"):
-        raise SafetyError("The verified Quick Toggles menu adapter currently supports the Cast Audio Quickshell plugin only")
-    target = m.get("integration", {}).get("target")
-    if target == "caelestia-dashboard-timer" and (m["id"] != "animated-timer" or m["type"] != "caelestia-plugin" or m["runtime"] != "quickshell"):
-        raise SafetyError("The Timer dashboard adapter supports animated-timer Quickshell only")
-    from backend.dashboard_contract import TARGET, declaration
-    if target == TARGET:
-        if m['id'] in {'animated-timer', 'cast-audio'}:
-            raise SafetyError('Legacy integrated components must retain their compatibility targets')
-        if m['type'] != 'caelestia-plugin' or m['runtime'] != 'quickshell':
-            raise SafetyError('Dashboard pages require a Caelestia Quickshell plugin')
-        declaration(m['integration'].get('dashboard'))
-    elif 'dashboard' in m.get('integration', {}):
-        raise SafetyError('dashboard declaration requires the caelestia-dashboard target')
-    if target not in (TARGET, None, "caelestia-plugin", "caelestia-quick-toggles", "caelestia-dashboard-timer"):
-        raise SafetyError("Unsupported integration target")
+    from backend.capabilities import capabilities
+    capabilities.validate_manifest(m)
     minimum = m.get('compatibility', {}).get('manager_min_version')
     if minimum is not None and not re.fullmatch(r'\d+\.\d+\.\d+', minimum):
         raise SafetyError('manager_min_version must be major.minor.patch')
+    python = m.get('compatibility', {}).get('python')
+    if python is not None:
+        from packaging.specifiers import SpecifierSet, InvalidSpecifier
+        try: SpecifierSet(python)
+        except InvalidSpecifier as error: raise SafetyError('compatibility.python: invalid Python version specifier') from error
+    if 'resources' in m:
+        resources = m['resources']
+        if not isinstance(resources, dict) or len(resources) > 500: raise SafetyError('resources: expected at most 500 resource descriptors')
+        for path, item in resources.items():
+            relative(path)
+            if not isinstance(item, dict) or set(item) != {'sha256', 'mime'}: raise SafetyError('resources.' + path + ': requires sha256 and mime')
+            if not isinstance(item['sha256'], str) or not re.fullmatch('[0-9a-f]{64}', item['sha256']): raise SafetyError('resources.' + path + '.sha256: invalid checksum')
+            if not isinstance(item['mime'], str) or not re.fullmatch('[a-z0-9.+-]+/[a-z0-9.+-]+', item['mime']): raise SafetyError('resources.' + path + '.mime: invalid MIME type')
+    if 'portable_data' in m:
+        items = m['portable_data']
+        if not isinstance(items, list) or len(items) > 32: raise SafetyError('portable_data: expected at most 32 locations')
+        seen = set()
+        for item in items:
+            if not isinstance(item, dict) or set(item) != {'root', 'path'} or item['root'] not in {'data', 'config', 'state'}: raise SafetyError('portable_data: requires root (data/config/state) and path')
+            path = relative(item['path'])
+            if not str(path).startswith('caelestia-components/' + m['id'] + '/'):
+                raise SafetyError('portable_data.path: must be a child of caelestia-components/' + m['id'])
+            if (item['root'], str(path)) in seen: raise SafetyError('portable_data: duplicate location')
+            seen.add((item['root'], str(path)))
     return m
 
 def validate(files, manifest, environment=None):

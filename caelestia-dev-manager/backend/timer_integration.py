@@ -6,11 +6,7 @@ import json
 from backend.paths import SafetyError, atomic_write, digest, no_symlinks
 
 TARGET = 'caelestia-dashboard-timer'
-COMMIT = 'e34b6957fad5ce9395841b65be9e3df180ccd65c'
-FILES = {
-    'modules/dashboard/Content.qml': 'd3daf3b27089c92681603b2bed1787ef8a428e48c63b219853fc6bb8b56e5e2f',
-    'modules/dashboard/Wrapper.qml': '17d119e5c5e2727f68ee6800df933a618f3e3b21c153622fcbe318123231146d',
-}
+from backend.compatibility import COMMIT, DASHBOARD_FILES as FILES, require_release
 
 
 def requested(manifest):
@@ -107,9 +103,7 @@ def plan(paths, manifest):
     wanted = requested(manifest)
     if not wanted and not receipt:
         return None
-    # Installed release marker is checked in addition to exact host hashes.
-    if no_symlinks(paths.shell / '.current_commit').read_text().strip() != COMMIT or no_symlinks(paths.shell / '.current_version').read_text().strip().removeprefix('VERSION=').lstrip('v') != '2.5.1':
-        raise SafetyError('Timer integration requires verified Caelestia KDE v2.5.1 at ' + COMMIT)
+    require_release(paths, "animated-timer")
     originals, before, modes = {}, {}, {}
     for name in FILES:
         path = no_symlinks(paths.shell / name)
@@ -130,25 +124,28 @@ def plan(paths, manifest):
             'summary': ('Add the Timer dashboard tab and per-screen slim notch, enable the plugin and restart the Caelestia KDE shell.' if wanted else 'Remove the Timer bridge and restore the verified original dashboard files.')}
 
 
+def validate_plan(proposal):
+    try:
+        if proposal['id'] != 'animated-timer' or any(set(proposal[k]) != set(FILES) for k in ('before', 'after', 'modes')): raise ValueError()
+        prior = json.loads(proposal['receipt_before']) if proposal['receipt_before'] else None
+        originals = prior['originals'] if prior else proposal['before']
+        if any(digest(originals[n].encode()) != FILES[n] or type(proposal['modes'][n]) is not int or not 0 <= proposal['modes'][n] <= 0o777 for n in FILES): raise ValueError()
+        transformed = panel_sources(originals)
+        receipt = {'id': 'animated-timer', 'adapter_version': 1, 'originals': originals,
+                   'checksums': {n: digest(v.encode()) for n, v in transformed.items()}, 'modes': proposal['modes']}
+        if prior and (prior != receipt or proposal['before'] != transformed): raise ValueError()
+        wanted = proposal['receipt_after'] is not None
+        if proposal['after'] != (transformed if wanted else originals) or proposal['receipt_after'] != (receipt if wanted else None): raise ValueError()
+    except (ValueError, KeyError, TypeError, AttributeError) as error:
+        raise SafetyError('Invalid fixed Timer host transformation/receipt') from error
+
+
 def check(paths, proposal):
-    if proposal is None:
-        return
-    if proposal.get('id') != 'animated-timer' or any(set(proposal.get(key, {})) != set(FILES) for key in ('before', 'after', 'modes')):
-        raise SafetyError('Invalid Timer host plan')
-    # Re-derive the fixed output rather than accepting arbitrary proposal code.
-    receipt, raw = read_receipt(paths)
-    originals = receipt['originals'] if receipt else proposal['before']
-    if any(digest(value.encode()) != FILES[name] for name, value in originals.items()):
-        raise SafetyError('Invalid Timer host originals')
-    wanted = proposal['receipt_after'] is not None
-    if proposal['after'] != (panel_sources(originals) if wanted else originals):
-        raise SafetyError('Invalid Timer host transformation')
-    expected_receipt = {'id': 'animated-timer', 'adapter_version': 1, 'originals': originals,
-                        'checksums': {n: digest(v.encode()) for n, v in proposal['after'].items()}, 'modes': proposal['modes']} if wanted else None
-    if proposal['receipt_after'] != expected_receipt:
-        raise SafetyError('Invalid Timer receipt plan')
-    if raw != proposal['receipt_before']:
-        raise SafetyError('Timer integration ownership changed since preview')
+    if proposal is None: return
+    require_release(paths, "animated-timer")
+    validate_plan(proposal)
+    _, raw = read_receipt(paths)
+    if raw != proposal['receipt_before']: raise SafetyError('Timer integration ownership changed since preview')
     for name in FILES:
         path = no_symlinks(paths.shell / name)
         if path.read_text() != proposal['before'][name] or path.stat().st_mode & 0o777 != proposal['modes'][name]:
@@ -172,8 +169,7 @@ def apply(paths, proposal):
 def recover(paths, proposal):
     if proposal is None:
         return
-    if proposal.get('id') != 'animated-timer' or any(set(proposal.get(key, {})) != set(FILES) for key in ('before', 'after', 'modes')):
-        raise SafetyError('Invalid Timer recovery plan')
+    validate_plan(proposal)
     for name in FILES:
         path = no_symlinks(paths.shell / name)
         if path.read_text() not in (proposal['before'][name], proposal['after'][name]) or path.stat().st_mode & 0o777 != proposal['modes'][name]:

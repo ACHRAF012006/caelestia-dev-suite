@@ -1,4 +1,5 @@
 import json
+from backend.schemas import CURRENT_SCHEMA
 
 TEMPLATES = {"Empty Caelestia Plugin": ("caelestia-plugin", "quickshell"),
              "Qt/QML Application": ("standalone-app", "qml"),
@@ -9,7 +10,7 @@ TEMPLATES = {"Empty Caelestia Plugin": ("caelestia-plugin", "quickshell"),
 
 def template(name, id, choice, description=""):
     type, runtime = TEMPLATES[choice]
-    m = {"schema_version": 1, "id": id, "name": name, "version": "0.1.0", "description": description,
+    m = {"schema_version": CURRENT_SCHEMA, "id": id, "name": name, "version": "0.1.0", "description": description,
          "type": type, "runtime": runtime}
     files = {"README.md": f"# {name}\n\n{description}\n\nReview and validate before installing. This component runs independently of Dev Manager.\n"}
     if runtime == "qml":

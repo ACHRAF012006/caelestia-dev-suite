@@ -107,7 +107,8 @@ def test_install_requests_shell_restart_after_transaction(cast_manager, monkeypa
 
 def test_partial_host_write_failure_recovers_both_files(cast_manager, monkeypatch):
     manager, originals = cast_manager
-    write = host.atomic_write
+    from backend import quick_toggle_integration
+    write = quick_toggle_integration.atomic_write
     failed = False
     def fail_once(path, data, mode=0o644):
         nonlocal failed
@@ -115,7 +116,7 @@ def test_partial_host_write_failure_recovers_both_files(cast_manager, monkeypatc
             failed = True
             raise OSError("partial host write")
         return write(path, data, mode)
-    monkeypatch.setattr(host, "atomic_write", fail_once)
+    monkeypatch.setattr(quick_toggle_integration, "atomic_write", fail_once)
     with pytest.raises(OSError, match="partial host"):
         manager.install("cast-audio")
     assert all((manager.paths.shell / name).read_text() == value for name, value in originals.items())
