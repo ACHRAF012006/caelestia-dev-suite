@@ -80,7 +80,7 @@ def main():
         subprocess.run([str(env / "bin/python"), "-m", "pip", "install", "--only-binary=:all:", "PySide6>=6.8,<7", "packaging>=24", "setuptools", "wheel"], check=True)
         subprocess.run([str(env / "bin/python"), "-m", "pip", "install", "--no-build-isolation", "--no-deps", str(project)], check=True)
         subprocess.run([str(env / "bin/python"), "-I", "-B", "-c", "from app.main import Window; from PySide6.QtWidgets import QApplication"], check=True)
-        command = "#!/bin/sh\nexec " + shlex.quote(str(env / "bin/python")) + " -I -B -m app.main --project " + shlex.quote(str(project)) + ' "$@"\n'
+        command = "#!/bin/sh\nexec " + shlex.quote(str(env / "bin/python")) + " -I -B -m backend.cli --project " + shlex.quote(str(project)) + ' "$@"\n'
         write(launcher, command, 0o755)
         # Use the same XDG-compliant Exec quoting as component desktop entries.
         sys.path.insert(0, str(project))

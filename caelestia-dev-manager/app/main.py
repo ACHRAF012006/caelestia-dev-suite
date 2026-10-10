@@ -20,6 +20,7 @@ from app.navigation import AnimatedStack, AnimatedNavigation
 from app.branding import application_icon
 from app.component_icons import ComponentIcons
 from app.inspection import Inspection
+from app.jobs import run_operation
 from app import preferences
 from backend.paths import VERSION, Paths, SafetyError, no_symlinks, relative
 from backend.manager import Manager
@@ -31,6 +32,7 @@ from backend.templates import TEMPLATES, template
 from backend.desktop import SHORTCUT_TYPES, ShortcutConflict, desktop_directory, shortcut_filename
 from backend.dependencies import DependencyError
 from backend.store import Store
+from backend.resources import preview as resource_preview, read_directory
 
 STYLE = """
 QWidget { background: #171b23; color: #e0e5ef; font-size: 13px; }
@@ -95,7 +97,7 @@ class Window(QMainWindow):
         self.resize(1240, 830)
         container = QWidget(); main = QHBoxLayout(container); main.setContentsMargins(0, 0, 0, 0)
         self.nav = AnimatedNavigation(); self.nav.setFixedWidth(202)
-        for name in ["Dashboard", "Components", "Create / Import", "Codex Context", "Backups", "Logs", "Settings", "Component Store"]: self.nav.addItem(name)
+        for name in ["Dashboard", "Components", "Create / Import", "Codex Context", "Backups", "Logs", "Settings", "Component Store", "Diagnostics", "Operation History"]: self.nav.addItem(name)
         self.stack = AnimatedStack()
         self.stack.set_animations_enabled(preferences.load(manager.paths).get("animations_enabled", True) is not False)
         self.nav.set_animations_enabled(self.stack.animations_enabled)
@@ -105,6 +107,7 @@ class Window(QMainWindow):
         self.make_dashboard(); self.make_components(); self.make_import(); self.make_context()
         self.make_backups(); self.make_logs(); self.make_settings()
         self.store_page = StorePage(self); self.stack.addWidget(self.store_page)
+        self.make_diagnostics(); self.make_history()
         self.nav.currentRowChanged.connect(self.change_page)
         self.nav.setCurrentRow(0)
         self.initializing = False
@@ -125,6 +128,18 @@ class Window(QMainWindow):
             else:
                 QMessageBox.warning(self, "Action could not be completed", str(e))
             return None
+
+    def run_backend(self, title, method, *args, cancellable=False, **kwargs):
+        paths, real = self.manager.paths, self.manager.runtime.real
+        def work(context):
+            context.checkpoint()
+            worker = Manager(paths, real=real)
+            worker.job_context = context
+            try:
+                return getattr(worker, method)(*args, **kwargs)
+            finally:
+                worker.registry.db.close()
+        return run_operation(self, title, work, cancellable=cancellable)
 
     def notify(self, message): self.statusBar().showMessage(message, 10000)
 
@@ -167,7 +182,7 @@ class Window(QMainWindow):
 
     def make_components(self):
         p, layout = page("Components", "Development source and installed copies are tracked separately. Select a component to manage it.")
-        layout.addLayout(row(button("+ New Component", self.new_component, True), button("Import Folder", self.import_folder),
+        layout.addLayout(row(button("+ New Component", self.new_component, True), button("Import Folder", self.import_folder), button("Import Package", self.import_archive),
                              button("Refresh", lambda: self.guard(self.request_refresh))))
         split = QSplitter(); self.components = QListWidget(); self.components.setMinimumWidth(260); self.components.setIconSize(QSize(44, 44))
         self.components.currentItemChanged.connect(self.select_component); split.addWidget(self.components)
@@ -188,7 +203,7 @@ class Window(QMainWindow):
                       ("Installed Files", "files", self.view_files), ("Logs", "logs", self.component_logs),
                       ("Backup", "backup", self.backup_selected), ("Delete Source", "delete", self.delete_selected),
                       ("Create Desktop Shortcut", "shortcut", self.toggle_desktop_shortcut),
-                      ("Dependencies", "dependencies", self.show_dependencies)]
+                      ("Dependencies", "dependencies", self.show_dependencies), ("Export Package", "export", self.export_package)]
         for i in range(0, len(operations), 3):
             controls = QHBoxLayout()
             for title, key, action in operations[i:i+3]:
@@ -314,17 +329,46 @@ class Window(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Import existing component source")
         if not folder: return
         def load():
-            root = no_symlinks(Path(folder)); files = {}
-            for path in root.rglob("*"):
-                if any(x.startswith(".") or x in {"__pycache__", "node_modules"} for x in path.relative_to(root).parts): continue
-                no_symlinks(path)
-                if path.is_file():
-                    name = str(relative(str(path.relative_to(root))))
-                    if path.stat().st_size > 8 * 1024 * 1024: raise SafetyError("Imported text file is too large")
-                    files[name] = path.read_text()
+            files = read_directory(Path(folder))
             m = manifest_parse(files["manifest.json"])
-            self.paste.setPlainText(encode(files, m)); self.nav.setCurrentRow(2); self.analyze()
+            if any(isinstance(value, bytes) for value in files.values()):
+                self.review_source_import(files, m)
+            else:
+                self.paste.setPlainText(encode(files, m)); self.nav.setCurrentRow(2); self.analyze()
         self.guard(load)
+
+    def review_source_import(self, files, manifest):
+        validation = validate(files, manifest, self.manager.environment)
+        text = "Create development source only: " + str(self.manager.paths.source(manifest['id'])) + "\n\n" + json.dumps(validation, indent=2) + "\n\n" + resource_preview(files)
+        if self.confirm("Review portable component source", text, "Create Source"):
+            ident = self.manager.create(files, draft=not validation['valid'])
+            self.refresh(); self.select_id(ident); self.navigate("Components")
+            self.notify("Source created. Install separately through the normal review.")
+
+    def import_archive(self):
+        filename, _ = QFileDialog.getOpenFileName(self, "Import portable component", filter="Component packages (*.cdmpkg)")
+        if not filename: return
+        def work(context):
+            from backend.archives import read
+            return read(Path(filename), self.manager.paths.project / 'workspace', context)
+        def load():
+            files, manifest, metadata = run_operation(self, "Inspect portable package", work, cancellable=True)
+            self.review_source_import(files, manifest)
+        self.guard(load)
+
+    def export_package(self):
+        filename, _ = QFileDialog.getSaveFileName(self, "Export development component", self.current_id + '.cdmpkg', "Component packages (*.cdmpkg)")
+        if not filename: return
+        ident = self.current_id
+        def work(context):
+            from backend.archives import export
+            context.checkpoint()
+            from backend.diagnostics import reader
+            manager = reader(self.manager.paths, real=False)
+            try: return export(manager.read_source(ident), Path(filename))
+            finally: manager.registry.db.close()
+        run_operation(self, "Export portable component", work)
+        self.notify("Package exported. Personal data and runtime environments are excluded.")
 
     def make_context(self):
         p, layout = page("Codex Context", "Generate a prompt with your environment, dependency diagnostics, component contract, and GitHub store publishing steps.")
@@ -367,11 +411,31 @@ class Window(QMainWindow):
         if host:
             text += "\n\n" + host["summary"] + "\nCaelestia KDE will restart.\n" + json.dumps(host, indent=2)
         if self.confirm("Restore installed backup", text, "Restore"):
-            self.manager.restore(id); self.refresh(); self.notify("Backup restored; inspect service state and reload Caelestia if required")
+            self.run_backend("Restore reviewed backup", "restore", id); self.refresh(); self.notify("Backup restored; inspect service state and reload Caelestia if required")
 
     def make_logs(self):
         p, layout = page("Logs", "Manager lifecycle events. Component runtime logs are available from Components.")
         self.logs_editor = CodeEditor(readonly=True); layout.addWidget(self.logs_editor)
+        layout.addWidget(button("Refresh", lambda: self.guard(self.request_refresh))); self.stack.addWidget(p)
+
+    def make_diagnostics(self):
+        p, layout = page("Diagnostics", "Read-only system health. Repairs use the existing reviewed component actions.")
+        layout.addLayout(row(button("Check System Health", lambda: self.guard(self.run_diagnostics), True),
+                             button("Open Components", lambda: self.navigate("Components"))))
+        self.diagnostics_editor = CodeEditor(readonly=True)
+        self.diagnostics_editor.setPlainText("Choose Check System Health to verify ownership, dependencies, backups, database and host adapters. No files will be repaired automatically.")
+        layout.addWidget(self.diagnostics_editor); self.stack.addWidget(p)
+
+    def run_diagnostics(self):
+        from backend.diagnostics import inspect
+        result = run_operation(self, "Read-only system health", lambda context: inspect(self.manager.paths, context, real=self.manager.runtime.real), cancellable=True)
+        lines = ["Manager " + result['manager_version'], "Database schema: " + str(result['database_schema']), ""]
+        lines += [check['scope'] + (" / " + check['component'] if check['component'] else "") + " — " + check['status'] + "\n" + check['detail'] for check in result['checks']]
+        self.diagnostics_editor.setPlainText("\n\n".join(lines) + "\n\nSYSTEM AND PATHS\n" + json.dumps({k: v for k, v in result.items() if k not in {'checks', 'components', 'history'}}, indent=2))
+
+    def make_history(self):
+        p, layout = page("Operation History", "Recent lifecycle and recovery results. Credentials are not recorded.")
+        self.history_editor = CodeEditor(readonly=True); layout.addWidget(self.history_editor)
         layout.addWidget(button("Refresh", lambda: self.guard(self.request_refresh))); self.stack.addWidget(p)
 
     def make_settings(self):
@@ -405,10 +469,17 @@ class Window(QMainWindow):
 
     def recover(self):
         if self.confirm("Recover interrupted operation", "Restore the last installed-file snapshot and registry state for the interrupted operation. Development source is unaffected.", "Recover"):
-            self.notify(self.manager.recover()); self.refresh()
+            self.notify(self.run_backend("Recover interrupted transaction", "recover")); self.refresh()
 
     def refresh(self):
-        """Immediate refresh after a reviewed mutation; tab navigation never calls this."""
+        """Refresh after mutation; production inspections always run off the UI thread."""
+        if self.manager.runtime.real:
+            self.refresh_generation += 1
+            if self.refresh_worker is not None:
+                self.refresh_worker.cancelled.set()
+                self.refresh_pending = True
+            else: self.request_refresh()
+            return
         self.refresh_generation += 1
         if self.refresh_worker is not None: self.refresh_worker.cancelled.set()
         from backend.environment import detect as detect_environment
@@ -486,6 +557,7 @@ class Window(QMainWindow):
             item = QListWidgetItem(f"{b['component_id']}  •  {b['version'] or 'not installed'}  •  {b['reason']}\n{b['date']}"); item.setData(Qt.UserRole, b["backup_id"]); self.backup_list.addItem(item)
             if b["backup_id"] == selected_backup: self.backup_list.setCurrentItem(item)
         self.logs_editor.setPlainText("\n".join(snapshot["logs"]) or "No events recorded")
+        self.history_editor.setPlainText("\n".join(x['time'] + ' • ' + x['type'] + ' • ' + (x['component'] or 'manager') + ' • ' + x['state'] + (' • ' + x['error_category'] if x['error_category'] else '') for x in self.manager.registry.history()) or "No lifecycle operations recorded")
         self.settings_editor.setPlainText(json.dumps({"project": str(self.manager.paths.project), "database": str(self.manager.paths.database),
                 "backups": str(self.manager.paths.backups), "manager_version": VERSION,
                 "recovery_required": self.manager.journal.exists(), **env}, indent=2))
@@ -545,6 +617,7 @@ class Window(QMainWindow):
             else: active = r.get("installed") and key in caps
             b.setEnabled(bool(active))
         self.actions["install"].setText("Update Installed Version" if r.get("installed") else "Install")
+        self.actions["export"].setEnabled(r["source_exists"])
         self.actions["shortcut"].setText("Remove Desktop Shortcut" if r["desktop_shortcut_created"] else "Create Desktop Shortcut")
 
     def show_dependencies(self):
@@ -579,12 +652,12 @@ class Window(QMainWindow):
         if setup["commands"]:
             if not self.confirm("Prepare this PC for Cast Audio", setup["summary"], "Prepare PC"): return False
             self.notify("Preparing this PC…"); QApplication.processEvents()
-            self.manager.prepare_system(self.current_id, expected=setup)
+            self.run_backend("Prepare reviewed machine requirements", "prepare_system", self.current_id, expected=setup)
         deps = m.get("dependencies", {}).get("python", [])
         if deps and not self.manager.dependencies_prepared(m):
             if not self.confirm("Download required libraries", m["name"] + " needs these Python libraries:\n\n" + "\n".join(deps) + "\n\nThey will be downloaded into this component's private environment. No system packages will be changed. This may take a few minutes.", "Download Libraries"): return False
             self.notify("Preparing Python dependencies…"); QApplication.processEvents()
-            self.manager.prepare_dependencies(self.current_id)
+            self.run_backend("Prepare isolated Python environment", "prepare_dependencies", self.current_id, cancellable=True)
         options = QWidget(); controls = QVBoxLayout(options); options.plan = None; options.filename = None; options.alternate_filename = None
         options.checkbox = QCheckBox("Create shortcut on desktop"); controls.addWidget(options.checkbox)
         options.checkbox.setEnabled(m["type"] in SHORTCUT_TYPES)
@@ -592,7 +665,7 @@ class Window(QMainWindow):
         alternative = button("Use alternate safe filename", lambda: choose_alternate()); controls.addWidget(alternative); alternative.hide()
         def rebuild():
             try:
-                plan = self.manager.plan_install(self.current_id, options.checkbox.isChecked(), options.filename)
+                plan = self.run_backend("Verify installation plan", "plan_install", self.current_id, options.checkbox.isChecked(), options.filename, cancellable=True)
                 options.plan = plan; alternative.hide()
                 executables = "\n\n".join(str(x.path) + "\n" + x.data.decode() for x in plan["files"] if (x.mode & 0o111 or x.path.suffix == ".service") and x.data is not None)
                 text = (f"{m['name']} {m['version']}\n\n" + plan["preview"] + "\n\nEXECUTABLE LAUNCHERS\n" + executables +
@@ -605,7 +678,7 @@ class Window(QMainWindow):
                 if plan["warnings"]: options.summary_text += "\n\nPlease note\n" + "\n".join(plan["warnings"])
                 if plan.get("host_integration"):
                     options.summary_text += "\n\nCaelestia host integration\n" + plan["host_integration"]["summary"] + "\nTwo verified host files are backed up and tracked separately; technical details show the complete before/after source."
-                text += "\n\nCOMPLETE COMPONENT SOURCE\n" + encode(self.manager.read_source(self.current_id), m)
+                text += "\n\nCOMPLETE COMPONENT SOURCE\n" + resource_preview(self.manager.read_source(self.current_id))
             except SafetyError as e:
                 options.plan = None; text = str(e); alternative.setVisible(isinstance(e, ShortcutConflict))
                 options.summary_text = text
@@ -617,7 +690,7 @@ class Window(QMainWindow):
         updating = r.get("installed", False)
         if self.confirm(("Update " if updating else "Install ") + m["name"], options.preview_text, "Update" if updating else "Install", options):
             if options.plan is None: raise SafetyError(options.preview_text)
-            self.manager.install(self.current_id, expected=options.plan); self.refresh(); self.notify("Installed. Components run independently of Dev Manager.")
+            self.run_backend("Apply reviewed installation", "install", self.current_id, expected=options.plan); self.refresh(); self.notify("Installed. Components run independently of Dev Manager.")
             return True
         return False
 
@@ -645,7 +718,7 @@ class Window(QMainWindow):
         elif record["installed_manifest"]["type"] in {"caelestia-plugin", "qml-component"}: text += "Rename only this plugin's owned metadata discovery file. An explicit Caelestia shell reload is required afterward."
         else: text += "Change this component's launcher permission and desktop visibility. Disabling also stops detected managed processes."
         if self.confirm("Enable component" if enabled else "Disable component", text, "Enable" if enabled else "Disable"):
-            self.manager.set_enabled(self.current_id, enabled); self.refresh()
+            self.run_backend("Change component enablement", "set_enabled", self.current_id, enabled); self.refresh()
 
     def launch_selected(self):
         self.manager.runtime.launch(self.manager.installed(self.current_id)); QTimer.singleShot(600, lambda: self.guard(self.request_refresh)); self.notify("Launch requested")
@@ -669,7 +742,7 @@ class Window(QMainWindow):
             text += "\n\n" + host["summary"] + " Caelestia KDE will restart. Changed host files are preserved and block this operation."
             text += "\n\n" + "\n".join("HOST FILE " + str(self.manager.paths.shell / name) + "\nBEFORE\n" + host["before"][name] + "\nAFTER\n" + host["after"][name] for name in host["before"])
         if self.confirm("Uninstall component", text, "Uninstall"):
-            self.manager.uninstall(self.current_id); self.refresh(); self.notify("Uninstalled owned files; source preserved")
+            self.run_backend("Uninstall reviewed component", "uninstall", self.current_id); self.refresh(); self.notify("Uninstalled owned files; source preserved")
 
     def open_source(self): QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.manager.paths.source(self.current_id))))
 
@@ -677,7 +750,7 @@ class Window(QMainWindow):
     def component_logs(self): self.show_text("Component logs", self.manager.runtime.logs(self.manager.registry.get(self.current_id)))
 
     def backup_selected(self):
-        self.manager.backup(self.current_id); self.refresh(); self.notify("Backup created")
+        self.run_backend("Create verified backup", "backup", self.current_id); self.refresh(); self.notify("Backup created")
 
     def delete_selected(self):
         r = self.manager.registry.get(self.current_id)

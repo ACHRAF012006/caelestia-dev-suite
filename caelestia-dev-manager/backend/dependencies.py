@@ -18,6 +18,8 @@ def clean_output(value):
     # pip may print authenticated index URLs. Never persist their credentials or query tokens.
     value = re.sub(r"https?://[^\s<>'\"]+", "[redacted URL]", value)
     value = re.sub(r"(?i)\b(password|token|api[_-]?key)=\S+", r"\1=[redacted]", value)
+    value = re.sub(r"(?i)(authorization:\s*bearer\s+|bearer\s+)[^\s]+", r"\1[redacted]", value)
+    value = re.sub(r"(?i)\b(password|token|api[_-]?key)\s*:\s*[^\s,]+", r"\1: [redacted]", value)
     return value[-16000:].strip()
 
 

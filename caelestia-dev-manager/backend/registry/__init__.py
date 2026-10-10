@@ -7,6 +7,7 @@ class Registry:
         path = no_symlinks(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
+        self.log_directory = path.parent / "logs"
         try:
             from backend.database import migrate
             migrate(self.db, path)
@@ -41,6 +42,8 @@ class Registry:
     def log(self, id, message):
         from datetime import datetime, timezone
         from backend.dependencies import clean_output
+        from backend.logging import logger
+        logger(self.log_directory).info(clean_output(message))
         self.db.execute("INSERT INTO events VALUES(?,?,?)", (datetime.now(timezone.utc).isoformat(), id, clean_output(message)))
         self.db.execute('DELETE FROM events WHERE rowid NOT IN (SELECT rowid FROM events ORDER BY rowid DESC LIMIT 3000)')
 

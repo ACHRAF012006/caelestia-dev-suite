@@ -5,14 +5,16 @@ from PySide6.QtCore import Qt, QThread, Signal, QTimer, Slot, QSize
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
                               QListWidget, QListWidgetItem, QSplitter, QComboBox, QFrame)
 from app.component_icons import ComponentIcons
+from app.jobs import ReadJob
 from backend.codex.package import encode
+from backend.resources import preview as resource_preview
 from backend.paths import SafetyError
 from backend.store import Store, DEFAULT_REPOSITORY
 from backend.validators import validate
 from backend import host_integration
 
 
-class StoreCheck(QThread):
+class StoreCheck(ReadJob):
     result = Signal(dict)
     failed = Signal(str)
 
@@ -20,6 +22,7 @@ class StoreCheck(QThread):
         super().__init__(parent)
         self.store = Store(store.paths)
         self.store.settings = dict(store.settings)
+        self.store.cancelled = self.cancelled
 
     def run(self):
         try: self.result.emit(self.store.scan())
@@ -215,7 +218,7 @@ class StorePage(QWidget):
             origin = (plan["record"] or {}).get("store_origin", {})
             if plan["before"] != plan["hash"] or origin.get("repository") != plan["repository"]:
                 self.status.setText("Downloading " + entry["manifest"]["name"] + "…")
-                self.manager.download_store_source(entry["files"], plan)
+                self.window.run_backend("Save reviewed store source", "download_store_source", entry["files"], plan)
             self.window.current_id = ident; self.window.refresh(); self.window.select_id(ident)
             installed = self.window.install_selected()
             self.status.setText(entry["manifest"]["name"] + (" updated." if state["update"] else " installed.") if installed else "Installation cancelled. No installed files were changed.")
@@ -237,7 +240,7 @@ class StorePage(QWidget):
             options.summary_text += "\n\n" + host["summary"] + " Caelestia KDE will restart."
             details += "\n\n" + json.dumps(host, indent=2)
         if self.window.confirm("Go back to previous version", details, "Restore Version", options):
-            self.manager.restore(meta["backup_id"]); self.window.refresh(); self.fill()
+            self.window.run_backend("Restore reviewed version", "restore", meta["backup_id"]); self.window.refresh(); self.fill()
             self.status.setText("Version " + str(meta["version"]) + " restored. Close and reopen the app to use it.")
 
     def show_details(self):
@@ -248,7 +251,7 @@ class StorePage(QWidget):
             text += "\n\nRequired libraries\n" + json.dumps(m.get("dependencies", {}), indent=2)
             text += "\n\nRepository: " + self.catalog["repository"] + "\nCommit: " + self.catalog["commit"]
             if self.last_error: text += "\n\nLast refresh error\n" + self.last_error
-            text += "\n\n" + encode(entry["files"], m)
+            text += "\n\n" + resource_preview(entry["files"])
             self.window.show_text("About " + m["name"], text)
 
     def shutdown(self):

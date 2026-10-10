@@ -1,7 +1,8 @@
 """Read-only UI inspection using a frozen inventory, never SQLite across threads."""
 import copy
 import threading
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import Signal
+from app.jobs import ReadJob
 from backend.environment import detect
 from backend.runtime import Runtime
 
@@ -27,14 +28,13 @@ class Inventory:
             yield receipt
 
 
-class Inspection(QThread):
+class Inspection(ReadJob):
     result = Signal(int, dict)
     failed = Signal(int, str)
 
     def __init__(self, manager, generation, parent=None):
         super().__init__(parent)
         self.generation = generation
-        self.cancelled = threading.Event()
         # Capture registry data on its owning thread. Only plain data and paths
         # reach the worker; mutations remain on the real manager's connection.
         self.reader = copy.copy(manager)
